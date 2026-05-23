@@ -1,0 +1,7 @@
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "Verify module organization matches spec"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Verify error patterns follow spec (structured returns, conditional routing)"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Verify type hints, no print(), no Any, no hardcoded keys"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "Verify structlog usage and log levels"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Verify component patterns, named exports, props conventions"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Verify strict TS, no any, discriminated unions"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Verify no console.log, no inline styles, accessible"}

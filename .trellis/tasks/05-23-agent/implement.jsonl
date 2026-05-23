@@ -1,0 +1,9 @@
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "Defines module layout for agents/, tools/, models/, llm/, services/, api/"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Error patterns for LangGraph agent nodes and tool failures"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Python code standards, type hints, ruff, dependencies"}
+{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "Next.js App Router layout, component organization"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "React component patterns, Tailwind, Shadcn/ui"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "Custom hooks for SSE streaming and data fetching"}
+{"file": ".trellis/tasks/05-23-agent/research/technical-implementation-details.md", "reason": "LangGraph StateGraph/interrupt/streaming API, FastAPI SSE, multi-provider LLM integration code"}
+{"file": ".trellis/tasks/05-23-agent/research/gis-tools-integration.md", "reason": "OpenRouteService isochrone, GeoPandas spatial filtering, TSP, 高德 JS API map viz"}
+{"file": ".trellis/tasks/05-23-agent/research/frontend-sse-integration.md", "reason": "Next.js SSE consumption, useSSE hook, POST-based streaming, event protocol"}
