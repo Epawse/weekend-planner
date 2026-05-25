@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     default_llm_provider: str = "qwen"
 
+    # Thinking Mode (DeepSeek)
+    thinking_enabled: bool = True
+    thinking_effort: str = "medium"  # Options: "low", "medium", "high"
+
     # Default home location (望京 SOHO, Beijing)
     default_home_lng: float = 116.481
     default_home_lat: float = 39.998

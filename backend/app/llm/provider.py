@@ -29,12 +29,20 @@ class LLMProviderFactory:
         )
 
     def _create_deepseek(self, temperature: float = 0.7) -> BaseChatModel:
-        return ChatOpenAI(
-            model="deepseek-chat",
-            api_key=settings.deepseek_api_key,
-            base_url="https://api.deepseek.com/v1",
-            temperature=temperature,
-        )
+        kwargs: dict = {
+            "model": "deepseek-v4-flash",
+            "api_key": settings.deepseek_api_key,
+            "base_url": "https://api.deepseek.com",
+            "temperature": temperature,
+        }
+        if settings.thinking_enabled:
+            kwargs["model_kwargs"] = {
+                "extra_body": {
+                    "thinking": {"type": "enabled"},
+                    "reasoning_effort": settings.thinking_effort,
+                }
+            }
+        return ChatOpenAI(**kwargs)
 
     def _create_openai(self, temperature: float = 0.7) -> BaseChatModel:
         return ChatOpenAI(
