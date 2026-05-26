@@ -1,5 +1,7 @@
 """FastAPI application entrypoint."""
 
+import logging
+
 import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -7,7 +9,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import router
 from app.config import settings
 
-# Configure structlog
+_LOG_LEVELS = {"DEBUG": logging.DEBUG, "INFO": logging.INFO, "WARNING": logging.WARNING, "ERROR": logging.ERROR}
+
 structlog.configure(
     processors=[
         structlog.contextvars.merge_contextvars,
@@ -17,7 +20,7 @@ structlog.configure(
         structlog.processors.TimeStamper(fmt="iso"),
         structlog.dev.ConsoleRenderer(),
     ],
-    wrapper_class=structlog.make_filtering_bound_logger(structlog.get_level_from_name(settings.log_level)),
+    wrapper_class=structlog.make_filtering_bound_logger(_LOG_LEVELS.get(settings.log_level.upper(), logging.INFO)),
     context_class=dict,
     logger_factory=structlog.PrintLoggerFactory(),
     cache_logger_on_first_use=True,

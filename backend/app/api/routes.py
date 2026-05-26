@@ -42,7 +42,7 @@ async def create_plan(request: PlanCreateRequest):
     initial_state = {
         "user_input": request.message,
         "scenario": request.scenario,
-        "home_location": tuple(request.home_location),
+        "home_location": list(request.home_location),
         "scenario_description": request.scenario_description,
         "isochrone": None,
         "candidate_venues": [],
@@ -71,45 +71,46 @@ async def create_plan(request: PlanCreateRequest):
                 initial_state,
                 config=config,
                 stream_mode=["updates", "custom"],
+                version="v2",
             ):
-                if isinstance(chunk, tuple) and len(chunk) == 2:
-                    stream_type, payload = chunk
-                    if stream_type == "custom":
-                        yield {
-                            "event": payload.get("type", "progress"),
-                            "data": json.dumps(payload, ensure_ascii=False),
-                        }
-                    elif stream_type == "updates":
+                chunk_type = chunk.get("type") if isinstance(chunk, dict) else None
+                if chunk_type == "custom":
+                    payload = chunk.get("data", {})
+                    yield {
+                        "event": payload.get("type", "progress") if isinstance(payload, dict) else "progress",
+                        "data": json.dumps(payload, ensure_ascii=False, default=str),
+                    }
+                elif chunk_type == "updates":
+                    payload = chunk.get("data", {})
+                    if isinstance(payload, dict):
                         for node_name, state_update in payload.items():
+                            plan_status = state_update.get("plan_status") if isinstance(state_update, dict) else None
                             yield {
                                 "event": "node_complete",
                                 "data": json.dumps(
-                                    {"node": node_name, "plan_status": state_update.get("plan_status")},
+                                    {"node": node_name, "plan_status": plan_status},
                                     ensure_ascii=False,
                                 ),
                             }
 
             # Check if graph is interrupted (waiting for approval)
-            snapshot = await planning_graph.aget_state(config)
-            if snapshot.next:
-                # Graph paused at interrupt — plan is ready for review
-                plan_data = snapshot.values.get("plan")
+            try:
+                snapshot = await planning_graph.aget_state(config)
+                if snapshot.next:
+                    yield {
+                        "event": "interrupted",
+                        "data": json.dumps({"session_id": session_id, "awaiting": "approval"}),
+                    }
+                else:
+                    yield {
+                        "event": "done",
+                        "data": json.dumps({"message": "Planning complete"}),
+                    }
+            except Exception as e:
+                logger.warning("snapshot_check_failed", error=str(e))
                 yield {
-                    "event": "plan_ready",
-                    "data": json.dumps(
-                        {
-                            "session_id": session_id,
-                            "plan": plan_data,
-                            "isochrone": snapshot.values.get("isochrone"),
-                            "venues": snapshot.values.get("candidate_venues", [])[:10],
-                        },
-                        ensure_ascii=False,
-                    ),
-                }
-            else:
-                yield {
-                    "event": "done",
-                    "data": json.dumps({"message": "Planning complete"}),
+                    "event": "interrupted",
+                    "data": json.dumps({"session_id": session_id, "awaiting": "approval"}),
                 }
 
         except Exception as e:
@@ -149,20 +150,24 @@ async def approve_plan(request: PlanApproveRequest):
                 Command(resume=request.approved),
                 config=config,
                 stream_mode=["updates", "custom"],
+                version="v2",
             ):
-                if isinstance(chunk, tuple) and len(chunk) == 2:
-                    stream_type, payload = chunk
-                    if stream_type == "custom":
-                        yield {
-                            "event": payload.get("type", "progress"),
-                            "data": json.dumps(payload, ensure_ascii=False),
-                        }
-                    elif stream_type == "updates":
+                chunk_type = chunk.get("type") if isinstance(chunk, dict) else None
+                if chunk_type == "custom":
+                    payload = chunk.get("data", {})
+                    yield {
+                        "event": payload.get("type", "progress") if isinstance(payload, dict) else "progress",
+                        "data": json.dumps(payload, ensure_ascii=False, default=str),
+                    }
+                elif chunk_type == "updates":
+                    payload = chunk.get("data", {})
+                    if isinstance(payload, dict):
                         for node_name, state_update in payload.items():
+                            plan_status = state_update.get("plan_status") if isinstance(state_update, dict) else None
                             yield {
                                 "event": "node_complete",
                                 "data": json.dumps(
-                                    {"node": node_name, "plan_status": state_update.get("plan_status")},
+                                    {"node": node_name, "plan_status": plan_status},
                                     ensure_ascii=False,
                                 ),
                             }

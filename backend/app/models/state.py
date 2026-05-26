@@ -12,7 +12,7 @@ class PlannerState(TypedDict):
     # Input
     user_input: str
     scenario: Literal["family", "friends"]
-    home_location: tuple[float, float]  # GCJ-02 (lng, lat)
+    home_location: list[float]  # GCJ-02 [lng, lat]
     scenario_description: str  # e.g. "孩子5岁，老婆最近在减肥"
 
     # GIS Analysis
