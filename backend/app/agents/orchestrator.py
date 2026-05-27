@@ -1,9 +1,8 @@
 """Main LangGraph StateGraph for the activity planning agent.
 
 Topology: Plan-and-Execute with Interrupt
-  User Input -> parse_intent -> search_and_analyze -> generate_plan
+  User Input -> parse_intent -> spatial_analysis -> select_and_narrate
     -> present_plan (INTERRUPT) -> execute_steps -> generate_share_card -> END
-                                                 -> replan (on failure)
 """
 
 import json
@@ -15,14 +14,12 @@ from langgraph.config import get_stream_writer
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
 
-from app.llm.prompts import PLAN_OUTPUT_FORMAT, PLANNING_SYSTEM_PROMPT
+from app.llm.prompts import PLAN_OUTPUT_FORMAT, SELECTION_SYSTEM_PROMPT
 from app.llm.provider import llm_factory
 from app.models.state import PlannerState
+from app.services.spatial import SpatialAnalysisEngine
 from app.tools.booking import make_reservation
 from app.tools.delivery import order_delivery
-from app.tools.isochrone import get_reachable_area
-from app.tools.poi_search import search_venues
-from app.tools.weather import get_weather
 
 logger = structlog.get_logger()
 
@@ -39,7 +36,7 @@ async def parse_intent_node(state: PlannerState) -> dict:
     scenario = state.get("scenario", "family")
     scenario_description = state.get("scenario_description", "")
 
-    # If no scenario_description provided, use LLM to infer
+    # If no scenario_description provided, use defaults
     if not scenario_description:
         if scenario == "family":
             scenario_description = "家庭场景：带家人出去玩，注重亲子体验和舒适度"
@@ -56,93 +53,86 @@ async def parse_intent_node(state: PlannerState) -> dict:
     }
 
 
-async def search_and_analyze_node(state: PlannerState) -> dict:
-    """Call GIS tools to gather venue data, weather, and reachable area."""
+async def spatial_analysis_node(state: PlannerState) -> dict:
+    """Deterministic spatial analysis -- NO LLM involved.
+
+    Computes isochrone, searches POIs, filters spatially, clusters venues,
+    optimizes routes via TSP, and produces 2-3 candidate plans.
+    """
     writer = get_stream_writer()
-    home_location = state.get("home_location", (116.481, 39.998))
-    location_str = f"{home_location[0]},{home_location[1]}"
+    home_location = state.get("home_location", [116.481, 39.998])
 
-    # Step 1: Get weather
-    writer({"type": "tool_calling", "data": {"tool": "get_weather", "message": "正在查询天气..."}})
-    weather_result = await get_weather.ainvoke({"location": location_str})
-    weather_data = weather_result.get("data") if weather_result.get("status") == "success" else None
+    writer({"type": "tool_calling", "data": {"tool": "spatial_engine", "message": "正在计算可达范围..."}})
 
-    # Step 2: Get reachable area (isochrone)
-    writer({"type": "tool_calling", "data": {"tool": "get_reachable_area", "message": "正在计算可达范围..."}})
-    isochrone_result = await get_reachable_area.ainvoke(
-        {
-            "location": location_str,
-            "travel_minutes": 30,
-            "profile": "driving-car",
-        }
+    engine = SpatialAnalysisEngine()
+    result = await engine.analyze(
+        home_location=home_location,
+        scenario=state.get("scenario", "family"),
+        time_budget_hours=4.5,
     )
-    isochrone_data = isochrone_result.get("data") if isochrone_result.get("status") == "success" else None
 
-    # Step 3: Search venues based on scenario
-    writer({"type": "tool_calling", "data": {"tool": "search_venues", "message": "正在搜索周边场所..."}})
-
-    scenario = state.get("scenario", "family")
-    search_queries = _get_search_queries(scenario, state.get("scenario_description", ""))
-
-    all_venues: list[dict] = []
-    for query in search_queries:
-        result = await search_venues.ainvoke(
-            {
-                "query": query,
-                "location": location_str,
-                "radius": 5000,
-            }
-        )
-        if result.get("status") == "success":
-            venues = result.get("data", [])
-            all_venues.extend(venues)
+    candidates = result["candidates"]
+    all_venues = result["all_venues"]
+    stats = result["stats"]
 
     writer(
         {
             "type": "tool_result",
             "data": {
-                "message": f"找到 {len(all_venues)} 个候选场所",
-                "weather": weather_data.get("summary") if weather_data else "天气数据暂不可用",
+                "message": (
+                    f"空间分析完成: 找到 {stats['total_venues_found']} 个场所，"
+                    f"生成 {stats['valid_candidates']} 个候选方案"
+                ),
+                "stats": stats,
             },
         }
     )
 
     return {
-        "weather": weather_data,
-        "isochrone": isochrone_data,
+        "candidate_plans": candidates,
+        "isochrone": result["isochrone_geojson"],
         "candidate_venues": all_venues,
+        "weather": result["weather"],
     }
 
 
-async def generate_plan_node(state: PlannerState) -> dict:
-    """Use LLM to generate a structured activity plan from gathered data."""
+async def select_and_narrate_node(state: PlannerState) -> dict:
+    """LLM selects best candidate and generates natural language description.
+
+    The LLM receives pre-validated candidate plans (spatially feasible,
+    time-budget validated) and picks the best fit for the scenario.
+    It then writes natural language descriptions and a share_text.
+    """
     writer = get_stream_writer()
     writer({"type": "thinking", "data": {"message": "正在生成活动方案..."}})
 
-    home_location = state.get("home_location", (116.481, 39.998))
-    weather = state.get("weather")
-    candidate_venues = state.get("candidate_venues", [])
+    candidates = state.get("candidate_plans", [])
     scenario_description = state.get("scenario_description", "")
+    weather = state.get("weather")
+    user_input = state["user_input"]
 
-    # Build system prompt with context
+    if not candidates:
+        logger.warning("no_candidates_for_selection")
+        return {
+            "plan": None,
+            "error": "no_candidates",
+            "plan_status": "failed",
+        }
+
+    # Format candidates as structured Chinese text for LLM
+    candidates_text = _format_candidates_for_llm(candidates)
     weather_summary = weather.get("summary", "天气数据暂不可用") if weather else "天气数据暂不可用"
-    system_prompt = PLANNING_SYSTEM_PROMPT.format(
+
+    system_prompt = SELECTION_SYSTEM_PROMPT.format(
         scenario_description=scenario_description,
-        home_address="望京SOHO附近",
-        home_coords=f"{home_location[0]},{home_location[1]}",
         weather_summary=weather_summary,
-        travel_minutes=30,
     )
 
-    # Build venue context for LLM
-    venue_context = _format_venues_for_llm(candidate_venues)
+    user_message = f"""用户需求: {user_input}
 
-    user_message = f"""用户需求: {state["user_input"]}
+以下是经过空间分析验证的候选方案（已确认时间可行、路线最优）：
 
-以下是搜索到的候选场所（已按距离排序）：
-{venue_context}
-
-请根据以上信息，为用户规划一个完整的下午活动方案。
+{candidates_text}
 
 {PLAN_OUTPUT_FORMAT}"""
 
@@ -155,7 +145,7 @@ async def generate_plan_node(state: PlannerState) -> dict:
     response = await llm_factory.invoke_with_fallback(messages, temperature=0.7)
 
     # Parse plan from LLM response
-    plan = _parse_plan_from_response(response.content)
+    plan = _parse_plan_from_response(response.content, candidates)
 
     if plan:
         writer({"type": "plan_generated", "data": {"message": "方案已生成", "plan_title": plan.get("title", "")}})
@@ -194,7 +184,7 @@ async def present_plan_node(state: PlannerState) -> dict:
         }
     )
 
-    # Interrupt — waits for user approval via Command(resume=True/False)
+    # Interrupt -- waits for user approval via Command(resume=True/False)
     decision = interrupt(
         {
             "question": "请确认活动方案",
@@ -314,7 +304,7 @@ async def generate_share_card_node(state: PlannerState) -> dict:
 
 
 def should_retry_or_continue(state: PlannerState) -> str:
-    """Route after plan generation: retry on error, present on success."""
+    """Route after plan selection: retry on error, present on success."""
     if state.get("error") == "invalid_plan" and state.get("retry_count", 0) < 3:
         return "retry"
     if state.get("error"):
@@ -332,32 +322,49 @@ def after_approval(state: PlannerState) -> str:
 # --- Helper Functions ---
 
 
-def _get_search_queries(scenario: str, description: str) -> list[str]:
-    """Generate search queries based on scenario type."""
-    if scenario == "family":
-        return ["亲子乐园", "儿童餐厅", "公园"]
-    else:
-        return ["密室逃脱", "火锅", "甜品店"]
-
-
-def _format_venues_for_llm(venues: list[dict]) -> str:
-    """Format venue list into readable text for LLM context."""
-    if not venues:
-        return "暂无搜索结果"
+def _format_candidates_for_llm(candidates: list[dict]) -> str:
+    """Format candidate plans as structured Chinese text for LLM selection."""
+    if not candidates:
+        return "暂无候选方案"
 
     lines = []
-    for i, v in enumerate(venues[:15], 1):  # Limit to 15 venues
-        rating = f"评分{v.get('rating')}" if v.get("rating") else "暂无评分"
-        distance = f"{v.get('distance', '?')}米" if v.get("distance") else ""
-        lines.append(
-            f"{i}. {v.get('name', '未知')} | {v.get('category', '')} | {rating} | {distance}\n"
-            f"   地址: {v.get('address', '未知')} | 坐标: {v.get('coords', [0, 0])}"
-        )
+    for i, candidate in enumerate(candidates, 1):
+        lines.append(f"## 方案 {i}: {candidate.get('label', '')}")
+        lines.append(f"- 总时长: {candidate['total_duration_minutes']}分钟")
+        lines.append(f"- 通勤时间: {candidate['total_travel_minutes']}分钟")
+        lines.append(f"- 步行友好度: {candidate['walkability_score']}")
+        lines.append(f"- 空间特征: {candidate.get('spatial_summary', '')}")
+        lines.append("")
+
+        for activity in candidate.get("activities", []):
+            venue_name = activity.get("venue_name", "")
+            category = activity.get("category", "")
+            rating = f"评分{activity['rating']}" if activity.get("rating") else "暂无评分"
+            start_time = activity.get("start_time", "")
+            duration = activity.get("duration_minutes", 0)
+            travel = activity.get("travel_from_prev_minutes", 0)
+            distance = activity.get("distance_from_home", 0)
+            activity_type = activity.get("type", "")
+
+            type_label = {"play": "游玩", "eat": "用餐", "extra": "额外"}.get(activity_type, activity_type)
+            lines.append(f"  {activity['order']}. [{type_label}] {venue_name} | {category} | {rating}")
+            lines.append(f"     时间: {start_time} ({duration}分钟) | 前往耗时: {travel}分钟 | 距家{distance}米")
+            lines.append(f"     地址: {activity.get('venue_address', '')}")
+            lines.append(f"     坐标: {activity.get('venue_coords', [])}")
+            lines.append("")
+
+        lines.append("---")
+        lines.append("")
+
     return "\n".join(lines)
 
 
-def _parse_plan_from_response(content: str) -> dict | None:
-    """Extract JSON plan from LLM response text."""
+def _parse_plan_from_response(content: str, candidates: list[dict]) -> dict | None:
+    """Extract JSON plan from LLM response text.
+
+    The LLM should output a plan based on one of the candidates,
+    enriched with natural language descriptions.
+    """
     try:
         # Try to find JSON block in markdown code fence
         if "```json" in content:
@@ -376,11 +383,34 @@ def _parse_plan_from_response(content: str) -> dict | None:
 
         # Validate required fields
         if "activities" in plan and isinstance(plan["activities"], list):
+            # Enrich activities with coords from candidates if missing
+            _enrich_plan_from_candidates(plan, candidates)
             return plan
         return None
     except (json.JSONDecodeError, ValueError):
         logger.warning("plan_json_parse_failed", content_preview=content[:100])
         return None
+
+
+def _enrich_plan_from_candidates(plan: dict, candidates: list[dict]) -> None:
+    """Fill in missing coordinate/address data from candidate plans."""
+    # Build a lookup of venue names to their data from candidates
+    venue_lookup: dict[str, dict] = {}
+    for candidate in candidates:
+        for activity in candidate.get("activities", []):
+            name = activity.get("venue_name", "")
+            if name:
+                venue_lookup[name] = activity
+
+    for activity in plan.get("activities", []):
+        venue_name = activity.get("venue_name", "")
+        if venue_name in venue_lookup:
+            source = venue_lookup[venue_name]
+            # Fill in missing fields from spatial data
+            if not activity.get("venue_coords"):
+                activity["venue_coords"] = source.get("venue_coords", [])
+            if not activity.get("venue_address"):
+                activity["venue_address"] = source.get("venue_address", "")
 
 
 # --- Graph Construction ---
@@ -392,23 +422,23 @@ def build_planning_graph() -> StateGraph:
 
     # Add nodes
     builder.add_node("parse_intent", parse_intent_node)
-    builder.add_node("search_and_analyze", search_and_analyze_node)
-    builder.add_node("generate_plan", generate_plan_node)
+    builder.add_node("spatial_analysis", spatial_analysis_node)
+    builder.add_node("select_and_narrate", select_and_narrate_node)
     builder.add_node("present_plan", present_plan_node)
     builder.add_node("execute_steps", execute_steps_node)
     builder.add_node("generate_share_card", generate_share_card_node)
 
     # Add edges
     builder.add_edge(START, "parse_intent")
-    builder.add_edge("parse_intent", "search_and_analyze")
-    builder.add_edge("search_and_analyze", "generate_plan")
+    builder.add_edge("parse_intent", "spatial_analysis")
+    builder.add_edge("spatial_analysis", "select_and_narrate")
 
-    # Conditional: after plan generation
+    # Conditional: after plan selection
     builder.add_conditional_edges(
-        "generate_plan",
+        "select_and_narrate",
         should_retry_or_continue,
         {
-            "retry": "generate_plan",
+            "retry": "select_and_narrate",
             "present": "present_plan",
             "end": END,
         },

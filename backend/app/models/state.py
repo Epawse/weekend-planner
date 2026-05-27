@@ -20,6 +20,7 @@ class PlannerState(TypedDict):
     candidate_venues: list[dict]  # POI results filtered by isochrone
     weather: dict | None  # Real-time weather data
     optimized_route: dict | None  # Route GeoJSON
+    candidate_plans: list[dict]  # Spatially-validated candidate plans from SpatialAnalysisEngine
 
     # Planning
     messages: Annotated[list[BaseMessage], add_messages]
