@@ -138,6 +138,7 @@ export default function HomePage() {
           {mapData && (
             <span className="text-xs text-zinc-400">
               {mapData.venues.length} 个活动地点
+              {mapData.spatialVenues.length > 0 && ` / ${mapData.spatialVenues.length} 个周边场所`}
             </span>
           )}
         </div>

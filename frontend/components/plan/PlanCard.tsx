@@ -4,8 +4,9 @@ import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/componen
 import { TimelineView } from "./TimelineView";
 import { ActionButton } from "./ActionButton";
 import { ShareButton } from "@/components/shared/ShareButton";
+import { Badge } from "@/components/ui/badge";
 import { formatDuration } from "@/lib/utils";
-import { Clock, Route } from "lucide-react";
+import { Clock, Route, Footprints } from "lucide-react";
 import type { Plan, PlanStatus } from "@/lib/types";
 
 interface PlanCardProps {
@@ -20,6 +21,9 @@ export function PlanCard({ plan, status, onApprove, onReject }: PlanCardProps) {
   const isExecuting = status === "executing";
   const isDone = status === "done";
 
+  const walkabilityScore = plan.walkability_score ?? 0;
+  const isHighlyWalkable = walkabilityScore > 0.8;
+
   return (
     <Card className="overflow-hidden">
       <CardHeader className="bg-gradient-to-r from-orange-50 to-amber-50">
@@ -27,7 +31,7 @@ export function PlanCard({ plan, status, onApprove, onReject }: PlanCardProps) {
           <span>{plan.title}</span>
           {isDone && <ShareButton text={plan.share_text} />}
         </CardTitle>
-        <div className="flex items-center gap-4 text-sm text-zinc-500">
+        <div className="flex flex-wrap items-center gap-3 text-sm text-zinc-500">
           <span className="flex items-center gap-1">
             <Clock className="h-4 w-4" />
             总时长 {formatDuration(plan.duration_hours * 60)}
@@ -36,6 +40,12 @@ export function PlanCard({ plan, status, onApprove, onReject }: PlanCardProps) {
             <Route className="h-4 w-4" />
             通勤 {plan.total_travel_minutes} 分钟
           </span>
+          {isHighlyWalkable && (
+            <Badge className="border-green-200 bg-green-50 text-green-700" variant="outline">
+              <Footprints className="mr-1 h-3 w-3" />
+              全程步行可达
+            </Badge>
+          )}
         </div>
       </CardHeader>
 

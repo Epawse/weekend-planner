@@ -9,7 +9,7 @@ import type {
   Scenario,
   PlanMapData,
   GeoJSONPolygon,
-  RouteGeoJSON,
+  SpatialVenue,
 } from "@/lib/types";
 
 interface ChatMessage {
@@ -38,12 +38,14 @@ export function useChat(): UseChatReturn {
   const [status, setStatus] = useState<PlanStatus>("idle");
   const [mapData, setMapData] = useState<PlanMapData | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const homeLocationRef = useRef<[number, number]>([116.481, 39.998]);
   const abortRef = useRef<AbortController | null>(null);
 
   const sendMessage = useCallback(
     async (message: string, scenario: Scenario, homeLocation: [number, number]) => {
       abortRef.current?.abort();
       abortRef.current = new AbortController();
+      homeLocationRef.current = homeLocation;
 
       const userMessage: ChatMessage = {
         id: crypto.randomUUID(),
@@ -71,7 +73,6 @@ export function useChat(): UseChatReturn {
 
           switch (event.type) {
             case "session": {
-              // Capture backend-assigned session_id for later approve/modify calls
               const backendSessionId = event.data.session_id as string;
               if (backendSessionId) {
                 setSessionId(backendSessionId);
@@ -89,24 +90,61 @@ export function useChat(): UseChatReturn {
               break;
             }
             case "plan_ready": {
-              const readyPlan = event.data.plan as Plan;
+              const readyPlan = event.data.plan as Plan | undefined;
               if (readyPlan) {
                 setPlan(readyPlan);
                 setStatus("plan_ready");
 
+                // Extract isochrone GeoJSON from event
+                const isochrone = (event.data.isochrone as GeoJSONPolygon) || null;
+
+                // Extract spatial venues from event
+                const rawVenues = (event.data.venues as SpatialVenue[]) || [];
+
+                // Build route from plan activities' venue_coords
+                const routeCoords: number[][] = [homeLocation];
+                for (const activity of readyPlan.activities) {
+                  if (activity.venue_coords) {
+                    routeCoords.push(activity.venue_coords);
+                  }
+                }
+
+                const route = routeCoords.length > 1
+                  ? {
+                      type: "Feature" as const,
+                      geometry: {
+                        type: "LineString" as const,
+                        coordinates: routeCoords,
+                      },
+                      properties: {
+                        total_travel_minutes: readyPlan.total_travel_minutes,
+                      },
+                    }
+                  : null;
+
                 const newMapData: PlanMapData = {
-                  isochrone: (event.data.isochrone as GeoJSONPolygon) || null,
-                  route: (event.data.route as RouteGeoJSON) || null,
+                  isochrone,
+                  route,
                   venues: readyPlan.activities,
+                  spatialVenues: rawVenues,
                   home_location: homeLocation,
                 };
                 setMapData(newMapData);
               }
 
-              // Also capture session_id if present (sent after interrupt detection)
+              // Capture session_id if present
               const sid = event.data.session_id as string;
               if (sid) {
                 setSessionId(sid);
+              }
+              break;
+            }
+            case "interrupted": {
+              // Graph is paused waiting for approval -- ensure status reflects this
+              setStatus("plan_ready");
+              const interruptSid = event.data.session_id as string;
+              if (interruptSid) {
+                setSessionId(interruptSid);
               }
               break;
             }
@@ -157,7 +195,7 @@ export function useChat(): UseChatReturn {
               const stepMsg: ChatMessage = {
                 id: crypto.randomUUID(),
                 role: "assistant",
-                content: `✓ ${(event.data.venue as string) || "步骤完成"}${event.data.confirmation ? ` (${event.data.confirmation})` : ""}`,
+                content: `${(event.data.venue as string) || "步骤完成"}${event.data.confirmation ? ` (${event.data.confirmation})` : ""}`,
                 timestamp: event.timestamp,
               };
               setMessages((prev) => [...prev, stepMsg]);
@@ -167,7 +205,7 @@ export function useChat(): UseChatReturn {
               const failMsg: ChatMessage = {
                 id: crypto.randomUUID(),
                 role: "assistant",
-                content: `✗ ${(event.data.error as string) || "步骤失败"}`,
+                content: `${(event.data.error as string) || "步骤失败"}`,
                 timestamp: event.timestamp,
               };
               setMessages((prev) => [...prev, failMsg]);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useSyncExternalStore } from "react";
-import type { PlanMapData } from "@/lib/types";
+import type { PlanMapData, SpatialVenue } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 interface MapViewProps {
@@ -24,9 +24,21 @@ function getMarkerColor(type: "play" | "eat" | "extra"): string {
   }
 }
 
+function getSpatialVenueColor(venue: SpatialVenue): string {
+  // Try to infer type from category keywords
+  const cat = (venue.category || "").toLowerCase();
+  if (cat.includes("餐") || cat.includes("美食") || cat.includes("火锅") || cat.includes("烧烤")) {
+    return "#fdba74"; // light orange
+  }
+  if (cat.includes("乐园") || cat.includes("公园") || cat.includes("游乐") || cat.includes("展览") || cat.includes("密室")) {
+    return "#86efac"; // light green
+  }
+  return "#c4b5fd"; // light purple
+}
+
 // External store for AMap script loading state
 type ScriptState = { loaded: boolean; error: string | null };
-let scriptState: ScriptState = { loaded: false, error: "" };
+let scriptState: ScriptState = { loaded: false, error: null };
 const listeners = new Set<() => void>();
 
 function getSnapshot(): ScriptState {
@@ -117,7 +129,7 @@ export function MapView({ mapData, className }: MapViewProps) {
 
     const map = mapRef.current;
 
-    // Clear existing overlays (except home marker)
+    // Clear existing overlays
     map.clearMap();
 
     // Re-add home marker
@@ -125,7 +137,7 @@ export function MapView({ mapData, className }: MapViewProps) {
       position: mapData.home_location,
       map: map,
       label: {
-        content: "<span style='font-size:12px;color:#dc2626;font-weight:bold;'>家</span>",
+        content: "<span style='font-size:12px;color:#dc2626;font-weight:bold;background:white;padding:2px 6px;border-radius:4px;border:1px solid #dc2626;'>家</span>",
         offset: new window.AMap.Pixel(0, -30),
       },
     });
@@ -141,16 +153,33 @@ export function MapView({ mapData, className }: MapViewProps) {
       const polygon = new window.AMap.Polygon({
         path: paths,
         fillColor: "#00eeff",
-        fillOpacity: 0.15,
+        fillOpacity: 0.12,
         strokeColor: "#00bcd4",
         strokeWeight: 2,
-        strokeOpacity: 0.6,
+        strokeOpacity: 0.5,
         map: map,
       });
       overlays.push(polygon);
     }
 
-    // Draw route polyline
+    // Draw spatial venues as background markers (lighter, smaller)
+    if (mapData.spatialVenues && mapData.spatialVenues.length > 0) {
+      for (const venue of mapData.spatialVenues) {
+        if (!venue.coords) continue;
+        const color = getSpatialVenueColor(venue);
+        const marker = new window.AMap.Marker({
+          position: venue.coords,
+          map: map,
+          label: {
+            content: `<span style="font-size:9px;color:${color};background:white;padding:1px 4px;border-radius:3px;border:1px solid ${color};opacity:0.7;">${venue.name}</span>`,
+            offset: new window.AMap.Pixel(0, -25),
+          },
+        });
+        overlays.push(marker);
+      }
+    }
+
+    // Draw route polyline (connecting plan activities in order)
     if (mapData.route?.geometry?.coordinates) {
       const routePath = mapData.route.geometry.coordinates.map(
         (coord) => new window.AMap.LngLat(coord[0], coord[1])
@@ -168,14 +197,15 @@ export function MapView({ mapData, className }: MapViewProps) {
       overlays.push(polyline);
     }
 
-    // Add venue markers
+    // Add plan venue markers (highlighted, larger)
     for (const venue of mapData.venues) {
+      if (!venue.venue_coords) continue;
       const color = getMarkerColor(venue.type);
       const marker = new window.AMap.Marker({
         position: venue.venue_coords,
         map: map,
         label: {
-          content: `<span style="font-size:11px;color:${color};font-weight:600;background:white;padding:2px 6px;border-radius:4px;border:1px solid ${color};">${venue.order}. ${venue.venue_name}</span>`,
+          content: `<span style="font-size:11px;color:${color};font-weight:600;background:white;padding:2px 6px;border-radius:4px;border:2px solid ${color};box-shadow:0 1px 3px rgba(0,0,0,0.15);">${venue.order}. ${venue.venue_name}</span>`,
           offset: new window.AMap.Pixel(0, -35),
         },
       });

@@ -20,6 +20,7 @@ export interface Plan {
   activities: Activity[];
   total_travel_minutes: number;
   share_text: string;
+  walkability_score?: number;
 }
 
 export type PlanEventType =
@@ -29,6 +30,7 @@ export type PlanEventType =
   | "tool_result"
   | "plan_generated"
   | "plan_ready"
+  | "interrupted"
   | "node_complete"
   | "step_start"
   | "step_complete"
@@ -81,9 +83,25 @@ export interface RouteGeoJSON {
   properties: Record<string, unknown>;
 }
 
+/**
+ * Raw venue data from the backend spatial analysis engine.
+ * These are all venues found within the isochrone, not just the selected plan venues.
+ */
+export interface SpatialVenue {
+  id: string;
+  name: string;
+  address: string;
+  coords: [number, number];
+  category: string;
+  rating: number | null;
+  distance?: number;
+  business_area?: string;
+}
+
 export interface PlanMapData {
   isochrone: GeoJSONPolygon | null;
   route: RouteGeoJSON | null;
   venues: Activity[];
+  spatialVenues: SpatialVenue[];
   home_location: [number, number];
 }
