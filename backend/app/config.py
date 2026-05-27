@@ -18,6 +18,7 @@ class Settings(BaseSettings):
 
     # Weather Service
     qweather_api_key: str = ""
+    qweather_api_host: str = "devapi.qweather.com"
 
     # App Settings
     app_env: str = "development"

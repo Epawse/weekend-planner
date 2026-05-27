@@ -57,6 +57,8 @@ async def get_reachable_area(
         feature = data["features"][0]
         geometry = feature.get("geometry", {})
 
+        coords = geometry.get("coordinates", [[]])[0] if geometry.get("type") == "Polygon" else []
+
         isochrone_data = {
             "type": "Feature",
             "geometry": geometry,
@@ -64,7 +66,7 @@ async def get_reachable_area(
                 "center": [float(lng), float(lat)],
                 "travel_minutes": travel_minutes,
                 "profile": profile,
-                "area_km2": round(feature.get("properties", {}).get("area", 0) / 1_000_000, 2),
+                "vertex_count": len(coords),
             },
         }
 
@@ -72,7 +74,7 @@ async def get_reachable_area(
             "ors_isochrone_success",
             travel_minutes=travel_minutes,
             profile=profile,
-            area_km2=isochrone_data["properties"]["area_km2"],
+            vertex_count=len(coords),
         )
         return {"status": "success", "data": isochrone_data}
 
