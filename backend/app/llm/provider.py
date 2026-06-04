@@ -16,7 +16,7 @@ class ProviderUnavailableError(Exception):
 class LLMProviderFactory:
     """Multi-provider LLM with priority-based fallback.
 
-    Priority order: Qwen (DashScope) -> DeepSeek -> Gemini -> OpenAI
+    Priority order: Qwen (DashScope) -> Gemini -> DeepSeek -> OpenAI
     All use OpenAI-compatible interface for consistency.
     """
 
@@ -72,10 +72,10 @@ class LLMProviderFactory:
         providers = []
         if settings.dashscope_api_key:
             providers.append("qwen")
-        if settings.deepseek_api_key:
-            providers.append("deepseek")
         if settings.gemini_api_key:
             providers.append("gemini")
+        if settings.deepseek_api_key:
+            providers.append("deepseek")
         if settings.openai_api_key:
             providers.append("openai")
         return providers
