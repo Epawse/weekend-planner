@@ -24,6 +24,7 @@ async def health_check() -> HealthResponse:
     providers = {
         "qwen": bool(settings.dashscope_api_key),
         "deepseek": bool(settings.deepseek_api_key),
+        "gemini": bool(settings.gemini_api_key),
         "openai": bool(settings.openai_api_key),
     }
     return HealthResponse(status="ok", providers=providers)

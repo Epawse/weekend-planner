@@ -16,7 +16,7 @@ class ProviderUnavailableError(Exception):
 class LLMProviderFactory:
     """Multi-provider LLM with priority-based fallback.
 
-    Priority order: Qwen (DashScope) -> DeepSeek -> OpenAI
+    Priority order: Qwen (DashScope) -> DeepSeek -> Gemini -> OpenAI
     All use OpenAI-compatible interface for consistency.
     """
 
@@ -44,6 +44,22 @@ class LLMProviderFactory:
             }
         return ChatOpenAI(**kwargs)
 
+    def _create_gemini(self, temperature: float = 0.7) -> BaseChatModel:
+        kwargs: dict = {
+            "model": "gemini-3.5-flash",
+            "api_key": settings.gemini_api_key,
+            "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
+            "temperature": temperature,
+        }
+        if settings.thinking_enabled:
+            # Gemini 3.x maps graduated thinking straight to `reasoning_effort`
+            # (unlike DeepSeek's thinking:{type} flag). It cannot fully disable
+            # thinking, so reasoning still consumes part of the max_tokens budget.
+            kwargs["model_kwargs"] = {
+                "extra_body": {"reasoning_effort": settings.thinking_effort}
+            }
+        return ChatOpenAI(**kwargs)
+
     def _create_openai(self, temperature: float = 0.7) -> BaseChatModel:
         return ChatOpenAI(
             model="gpt-4o-mini",
@@ -58,6 +74,8 @@ class LLMProviderFactory:
             providers.append("qwen")
         if settings.deepseek_api_key:
             providers.append("deepseek")
+        if settings.gemini_api_key:
+            providers.append("gemini")
         if settings.openai_api_key:
             providers.append("openai")
         return providers
@@ -83,6 +101,7 @@ class LLMProviderFactory:
         factory_map = {
             "qwen": self._create_qwen,
             "deepseek": self._create_deepseek,
+            "gemini": self._create_gemini,
             "openai": self._create_openai,
         }
 
