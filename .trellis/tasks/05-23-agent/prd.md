@@ -20,7 +20,7 @@ Design the complete LangGraph agent architecture for the weekend activity planni
 * **Real data layer**: 高德 POI search, 高德 route planning, OpenRouteService isochrone, 和风天气 real-time weather
 * **Mock execution layer**: booking confirmations, delivery orders, queue status (interface matches real API contracts for future swap)
 * **GIS capabilities**: isochrone-based reachability (not radius search), TSP multi-stop route optimization, GeoPandas spatial filtering, map visualization with 高德 JS API 2.0
-* Multi-provider LLM with priority fallback (Qwen 3.7-Max → DeepSeek V4 → Claude/OpenAI)
+* Multi-provider LLM with priority fallback (Qwen → Gemini → DeepSeek → OpenAI; only providers with a configured key are used; in the demo environment Gemini is primary and DeepSeek is the fallback)
 * SSE streaming from backend to frontend during planning and execution
 * LangGraph interrupt for plan approval — user confirms before execution begins
 * One-click mock execution with confirmation numbers, venue details, delivery ETA
@@ -162,12 +162,15 @@ Single LangGraph StateGraph, not multi-agent. Task is sequential and context won
 
 ```python
 # All providers via OpenAI-compatible interface
-Qwen 3.7-Max  → ChatOpenAI(base_url="dashscope.aliyuncs.com/compatible-mode/v1")
-DeepSeek V4   → ChatOpenAI(base_url="api.deepseek.com/v1")
-Claude/OpenAI → ChatAnthropic / ChatOpenAI (native)
+Qwen          → ChatOpenAI(base_url="dashscope.aliyuncs.com/compatible-mode/v1")
+Gemini        → ChatOpenAI(base_url="generativelanguage.googleapis.com/v1beta/openai/")
+DeepSeek      → ChatOpenAI(base_url="api.deepseek.com")
+OpenAI        → ChatOpenAI (native)
 ```
 
-Priority fallback: try providers in order, switch on failure.
+Priority fallback order: Qwen → Gemini → DeepSeek → OpenAI. Only providers with a
+configured API key are used, so in the demo environment (only Gemini + DeepSeek keys set)
+Gemini is the primary and DeepSeek is the fallback. Try providers in order, switch on failure.
 
 ### Frontend Map Visualization
 
@@ -251,7 +254,7 @@ GET /api/health
 | LM 推理约束不稳定 | Medium | Medium | structured output 约束输出格式 + few-shot examples |
 | 2周内完成全部实现 | High | — | 按 P0-P3 优先级分层，P0 必须完成 |
 | 决赛现场网络问题 | Medium | High | 预录 Demo 视频 backup + 本地缓存关键 API 响应 |
-| Qwen tool calling 不稳定 | Medium | Medium | fallback 到 DeepSeek/Claude |
+| 主力 LLM tool calling 不稳定 | Medium | Medium | fallback 链 Gemini → DeepSeek（仅用已配置 key 的 provider） |
 
 ### Implementation Priority
 

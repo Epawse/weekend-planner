@@ -17,6 +17,7 @@ This directory contains guidelines for backend development. Fill in each file wi
 | [Directory Structure](./directory-structure.md) | Python + LangGraph agent backend layout | Done |
 | [Database Guidelines](./database-guidelines.md) | In-memory + JSON mock data, LangGraph checkpointer | Done |
 | [Error Handling](./error-handling.md) | Agent error patterns, graph routing, retries | Done |
+| [LLM Provider](./llm-provider.md) | Provider selection/fallback, env wiring, `DEFAULT_LLM_PROVIDER` gotcha | Done |
 | [Quality Guidelines](./quality-guidelines.md) | Python 3.11+, ruff, pytest, type hints | Done |
 | [Logging Guidelines](./logging-guidelines.md) | structlog, agent execution tracing | Done |
 

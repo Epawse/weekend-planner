@@ -18,6 +18,10 @@ class LLMProviderFactory:
 
     Priority order: Qwen (DashScope) -> Gemini -> DeepSeek -> OpenAI
     All use OpenAI-compatible interface for consistency.
+
+    invoke_with_fallback() drives runtime selection via get_provider_order(),
+    which only includes providers with a configured key. settings.default_llm_provider
+    is consulted exclusively by get_model(provider=None) and does not affect fallback.
     """
 
     def _create_qwen(self, temperature: float = 0.7) -> BaseChatModel:

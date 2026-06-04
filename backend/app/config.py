@@ -24,7 +24,11 @@ class Settings(BaseSettings):
     # App Settings
     app_env: str = "development"
     log_level: str = "INFO"
-    default_llm_provider: str = "qwen"
+    # Runtime provider selection is governed by LLMProviderFactory.get_provider_order()
+    # / invoke_with_fallback() (the orchestrator's only LLM entry point). This value is
+    # only consulted by get_model(provider=None); in the demo env Gemini is primary and
+    # DeepSeek is the fallback.
+    default_llm_provider: str = "gemini"
 
     # Thinking Mode (DeepSeek)
     thinking_enabled: bool = True
