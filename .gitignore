@@ -1,27 +1,75 @@
-# Environment variables (API keys)
+# ─────────────────────────────────────────────────────────────
+# Secrets / environment — NEVER commit real API keys.
+# `.env.example` templates ARE tracked (see the negation below).
+# ─────────────────────────────────────────────────────────────
 .env
-.env.local
+.env.*
+!.env.example
+*.pem
 
-# Python
+# ─────────────────────────────────────────────────────────────
+# Python (backend/)
+# ─────────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
+*$py.class
 *.egg-info/
+.eggs/
 dist/
+build/
 .venv/
 venv/
+.python-version
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
 
-# Node
+# ─────────────────────────────────────────────────────────────
+# Node / Next.js (frontend/)
+# ─────────────────────────────────────────────────────────────
 node_modules/
+.next/
+out/
+.turbo/
+*.tsbuildinfo
+next-env.d.ts
+.vercel
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+.pnp.*
 
-# OS
+# ─────────────────────────────────────────────────────────────
+# OS / editor junk
+# ─────────────────────────────────────────────────────────────
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
 Thumbs.db
+ehthumbs.db
+desktop.ini
+# Windows "mark of the web" alternate-data-stream sidecars
+# (created when files are downloaded/copied onto an NTFS mount)
+*:Zone.Identifier
 
+# ─────────────────────────────────────────────────────────────
 # IDE
+# ─────────────────────────────────────────────────────────────
 .idea/
 .vscode/
 *.swp
+*.swo
 
-# Generated
+# ─────────────────────────────────────────────────────────────
+# Generated agent runtime dirs (local only)
+# ─────────────────────────────────────────────────────────────
 .agents/
 .codex/
+*.log
