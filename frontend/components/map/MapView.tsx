@@ -39,6 +39,7 @@ function getSpatialVenueColor(venue: SpatialVenue): string {
 // External store for AMap script loading state
 type ScriptState = { loaded: boolean; error: string | null };
 let scriptState: ScriptState = { loaded: false, error: null };
+const SERVER_SNAPSHOT: ScriptState = { loaded: false, error: null };
 const listeners = new Set<() => void>();
 
 function getSnapshot(): ScriptState {
@@ -46,7 +47,7 @@ function getSnapshot(): ScriptState {
 }
 
 function getServerSnapshot(): ScriptState {
-  return { loaded: false, error: null };
+  return SERVER_SNAPSHOT;
 }
 
 function subscribe(callback: () => void): () => void {
