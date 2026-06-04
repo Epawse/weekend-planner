@@ -22,11 +22,11 @@ async function* parseSSEStream(
       if (done) break;
 
       buffer += decoder.decode(value, { stream: true });
-      const parts = buffer.split("\n\n");
+      const parts = buffer.split(/\r\n\r\n|\n\n|\r\r/);
       buffer = parts.pop() || "";
 
       for (const part of parts) {
-        const lines = part.split("\n");
+        const lines = part.split(/\r\n|\n|\r/);
         let eventType = "";
         let eventData = "";
 
