@@ -28,6 +28,20 @@ LangGraph Plan-and-Execute · 确定性空间分析引擎 · Gemini 推理（Dee
   </tr>
 </table>
 
+> 📄 **完整项目文档**（2 页 A4 PDF）：[**docs/项目文档.pdf**](docs/项目文档.pdf) — 人文内核 + 两大核心创新 + 系统设计图。
+
+### 🧠 两大核心创新
+
+<div align="center">
+  <img src="docs/diagrams/02-consensus.png" alt="多人协同共识机制" width="84%" />
+  <br/><sub><b>① 多人协同智能</b> · 多元意志 → 综合研判 → 群体记忆 → 冲突取舍 → 有解释的共识</sub>
+</div>
+
+<div align="center">
+  <img src="docs/diagrams/03-gis-pipeline.png" alt="GIS 空间分析管线" width="94%" />
+  <br/><sub><b>② GIS 深度融合</b> · 等时圈 → POI → 可达过滤 → 天气 → TSP → 最优路线</sub>
+</div>
+
 ---
 
 ## ✨ 功能特性
@@ -50,46 +64,13 @@ LangGraph Plan-and-Execute · 确定性空间分析引擎 · Gemini 推理（Dee
 
 ## 🏗️ 系统架构
 
-```
-┌─────────────────────────────┐         SSE 流式         ┌──────────────────────────────────┐
-│   前端  Next.js 16 + React   │ ◀──────────────────────  │       后端  FastAPI + LangGraph      │
-│                             │   /api/plan/create        │                                    │
-│  • 聊天交互 (useChat)        │   /api/plan/approve       │  ┌──────────────────────────────┐  │
-│  • Plan Canvas / 地图 / 来源  │   /api/plan/feedback      │  │   Plan-and-Execute 状态图       │  │
-│  • 确认执行 / 反馈重规划       │  ──────────────────────▶  │  └──────────────────────────────┘  │
-└─────────────────────────────┘                           │                │                   │
-                                                          │     ┌──────────┴───────────┐        │
-                                                          │     ▼                      ▼        │
-                                            ┌─────────────────────────┐   ┌──────────────────┐  │
-                                            │  确定性空间分析引擎        │   │  Gemini LLM(主)   │  │
-                                            │  (services/spatial.py)   │   │   (叙事 / 编排)    │  │
-                                            └─────────────────────────┘   └──────────────────┘  │
-                                                          │                                      │
-                                            外部 API ▼  高德 POI · ORS 等时圈/路径 · 和风天气          │
-                                            └──────────────────────────────────────────────────┘
-```
+<div align="center"><img src="docs/diagrams/01-architecture.png" alt="系统架构" width="96%" /></div>
+
+> 「确定性工作流 + 可选 LLM 叙事层」：真实数据与状态由工程掌舵，LLM 只为体验添温度；单人规划走 LangGraph Plan-and-Execute，在 `present_plan` 处中断等待确认。
 
 ### 🧩 Agent 工作流（LangGraph 状态图）
 
-```
-parse_intent          解析自然语言 → 场景 / 出发点 / 偏好
-      │
-      ▼
-spatial_analysis      ❶ ORS 等时圈  ❷ 高德 POI 检索  ❸ Shapely 可达过滤
-（无 LLM，纯确定性）     ❹ 和风天气  ❺ 暴力 TSP 排序  → 候选场所 + 路线
-      │
-      ▼
-select_and_narrate    场景策略 + LLM 表达：从候选集挑选并生成 Plan Canvas
-      │
-      ▼
-present_plan ──────▶  ⏸ interrupt：呈现方案，等待用户确认 ───┐
-      │                                                  │ 用户拒绝 → reset
-      ▼ 用户确认 (Command resume=True)                      │
-execute_steps         调用预订 / 库存 / 备注 / 分享工具完成闭环    │
-      │                                                  │
-      ▼                                                  │
-generate_share_card   生成可分享卡片  ◀────────────────────┘
-```
+<div align="center"><img src="docs/diagrams/04-agent-workflow.png" alt="Agent 工作流" width="92%" /></div>
 
 ---
 
