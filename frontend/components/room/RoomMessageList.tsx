@@ -33,35 +33,55 @@ function TypingDots() {
 }
 
 /**
- * Shown the instant the user starts a turn while the real LLM is still thinking
- * (~7-9s). The label is honest — Gemini genuinely is reasoning during this wait;
- * the actual reasoning text arrives with the message and is shown collapsibly.
+ * The in-progress agent turn rendered as ONE persistent bubble that morphs in
+ * place: "正在思考" while the real LLM reasons (~7-9s), then the streaming reply —
+ * both inside the SAME orange box element. Rendered under a stable key so React
+ * reuses the DOM node across the thinking→streaming transition, avoiding an abrupt
+ * remount/swap when the reply arrives. The reasoning panel opens by default so the
+ * reasoning the user just watched stream does not appear to vanish.
  */
-function AgentThinkingBubble({ agent, reasoning }: { agent?: Participant; reasoning?: string }) {
+function AgentTurnBubble({
+  agent,
+  thinking,
+  reasoning,
+  text,
+  streaming,
+  timeLabel,
+}: {
+  agent?: Participant;
+  thinking: boolean;
+  reasoning?: string;
+  text?: string;
+  streaming?: boolean;
+  timeLabel?: string;
+}) {
   return (
     <div className="animate-message-in flex gap-3">
       <ParticipantAvatar participant={agent} participantId="agent" />
       <div className="min-w-0 flex-1">
-        <div className="text-sm font-semibold text-zinc-900">{agent?.name ?? "规划助手"}</div>
-        <div className="mt-1 inline-flex items-center gap-1.5 rounded-lg bg-orange-50 px-3 py-2 text-sm text-orange-700">
-          <span>正在思考</span>
-          <TypingDots />
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-semibold text-zinc-900">{agent?.name ?? "规划助手"}</span>
+          {!thinking && timeLabel ? <span className="text-xs text-zinc-400">{timeLabel}</span> : null}
         </div>
-        {reasoning ? (
-          <details open className="group mt-1.5">
-            <summary className="flex w-fit cursor-pointer list-none items-center gap-1 text-xs text-zinc-400 transition-colors hover:text-zinc-600 [&::-webkit-details-marker]:hidden">
-              <ChevronRight className="h-3 w-3 transition-transform duration-200 group-open:rotate-90" />
-              实时推理
-            </summary>
-            <div className="mt-1.5 whitespace-pre-wrap rounded-md border border-zinc-100 bg-zinc-50 px-2.5 py-2 text-xs leading-5 text-zinc-500">
-              {reasoning}
-              <span
-                aria-hidden
-                className="animate-caret-blink ml-0.5 inline-block h-3 w-[2px] translate-y-[1px] rounded-full bg-zinc-400 align-baseline"
-              />
-            </div>
-          </details>
-        ) : null}
+        <div className="mt-1 rounded-lg bg-orange-50 px-3 py-2 text-sm leading-6">
+          {thinking ? (
+            <span className="inline-flex items-center gap-1.5 text-orange-700">
+              <span>正在思考</span>
+              <TypingDots />
+            </span>
+          ) : (
+            <span className="text-orange-950">
+              <span className="whitespace-pre-wrap">{text}</span>
+              {streaming ? (
+                <span
+                  aria-hidden
+                  className="animate-caret-blink ml-0.5 inline-block h-3.5 w-[2px] translate-y-[2px] rounded-full bg-current align-baseline"
+                />
+              ) : null}
+            </span>
+          )}
+        </div>
+        {reasoning ? <ReasoningPanel reasoning={reasoning} defaultOpen /> : null}
       </div>
     </div>
   );
@@ -122,18 +142,26 @@ export function RoomMessageList({
   // The latest agent message's reasoning opens by default (continuity with the
   // live "thinking" stream the user just watched); older ones stay collapsed.
   const lastAgentMessageId = lastAgentId(visibleMessages);
-  // The agent's "thinking" coexists with members' "typing" — they describe
-  // different actors, so neither should suppress the other.
-  const showAgentThinking = Boolean(agentThinking);
-  // The neutral "generating" indicator only shows before the agent starts
-  // "thinking"; the two never appear together.
-  const showPreparing = Boolean(preparing) && !showAgentThinking;
+  // The in-progress agent reply: the last message, when it is the agent's and is
+  // still typing. It is rendered ONLY by the unified turn bubble (skipped in the
+  // map below) so the "thinking" indicator can morph into it in place.
+  const lastMessage = visibleMessages[visibleMessages.length - 1];
+  const lastFrame = lastMessage ? streaming?.get(lastMessage.id) : undefined;
+  const activeAgentMessage =
+    lastMessage && lastMessage.actor_id === "agent" && lastFrame?.streaming ? lastMessage : null;
+  // One persistent bubble spans the whole turn: "正在思考" first, then the
+  // streaming reply. The agent's turn coexists with members' "typing" — they
+  // describe different actors, so neither should suppress the other.
+  const showActiveAgentTurn = Boolean(agentThinking) || Boolean(activeAgentMessage);
+  // The neutral "generating" indicator only shows before the agent turn starts;
+  // the two never appear together.
+  const showPreparing = Boolean(preparing) && !showActiveAgentTurn;
   const agent = participants.find((item) => item.id === "agent");
 
   if (
     visibleMessages.length === 0 &&
     typingParticipants.length === 0 &&
-    !showAgentThinking &&
+    !showActiveAgentTurn &&
     !showPreparing
   ) {
     return null;
@@ -143,7 +171,9 @@ export function RoomMessageList({
     <section className="rounded-lg border border-zinc-100 bg-white p-4 shadow-sm shadow-zinc-100">
       <div className="mb-3 text-sm font-semibold text-zinc-900">多人对话</div>
       <div className="space-y-3">
-        {visibleMessages.map((message) => {
+        {visibleMessages
+          .filter((message) => message.id !== activeAgentMessage?.id)
+          .map((message) => {
           const participant = participants.find((item) => item.id === message.actor_id);
           const isAgent = message.actor_id === "agent";
           const frame = streaming?.get(message.id);
@@ -203,7 +233,21 @@ export function RoomMessageList({
             </div>
           );
         })}
-        {showAgentThinking && <AgentThinkingBubble agent={agent} reasoning={liveReasoning} />}
+        {showActiveAgentTurn && (
+          <AgentTurnBubble
+            key="active-agent-turn"
+            agent={agent}
+            thinking={Boolean(agentThinking)}
+            reasoning={agentThinking ? liveReasoning : activeAgentMessage?.reasoning}
+            text={
+              activeAgentMessage
+                ? streaming?.get(activeAgentMessage.id)?.text ?? activeAgentMessage.content
+                : undefined
+            }
+            streaming={Boolean(activeAgentMessage && streaming?.get(activeAgentMessage.id)?.streaming)}
+            timeLabel={activeAgentMessage ? formatTime(activeAgentMessage.created_at) : undefined}
+          />
+        )}
         {showPreparing && <GeneratingIndicator />}
       </div>
     </section>
