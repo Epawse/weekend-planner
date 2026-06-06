@@ -18,6 +18,8 @@ interface RoomMessageListProps {
   agentThinking?: boolean;
   /** The agent's reasoning streaming in live during the current turn. */
   liveReasoning?: string;
+  /** Neutral "generating" indicator shown during the demo's LLM wait. */
+  preparing?: boolean;
 }
 
 function TypingDots() {
@@ -66,6 +68,21 @@ function AgentThinkingBubble({ agent, reasoning }: { agent?: Participant; reason
 }
 
 /**
+ * Neutral "a turn is being generated" indicator shown during the demo's LLM wait,
+ * before any member speech exists. Deliberately carries no agent identity or
+ * reasoning — it must not read as the agent "thinking" ahead of the members it
+ * will reveal. Mutually exclusive in time with the agent "thinking" bubble.
+ */
+function GeneratingIndicator() {
+  return (
+    <div className="animate-message-in flex items-center gap-1.5 px-1 text-sm text-zinc-400">
+      <span>正在生成对话…</span>
+      <TypingDots />
+    </div>
+  );
+}
+
+/**
  * Collapsible panel showing the agent's genuine step reasoning. Opens by default
  * for the latest agent message so the reasoning the user just watched stream does
  * not vanish; older messages stay collapsed. Stays user-toggleable.
@@ -97,6 +114,7 @@ export function RoomMessageList({
   hiddenIds,
   agentThinking,
   liveReasoning,
+  preparing,
 }: RoomMessageListProps) {
   const visibleMessages = hiddenIds
     ? messages.filter((message) => !hiddenIds.has(message.id))
@@ -107,9 +125,17 @@ export function RoomMessageList({
   // The agent's "thinking" coexists with members' "typing" — they describe
   // different actors, so neither should suppress the other.
   const showAgentThinking = Boolean(agentThinking);
+  // The neutral "generating" indicator only shows before the agent starts
+  // "thinking"; the two never appear together.
+  const showPreparing = Boolean(preparing) && !showAgentThinking;
   const agent = participants.find((item) => item.id === "agent");
 
-  if (visibleMessages.length === 0 && typingParticipants.length === 0 && !showAgentThinking) {
+  if (
+    visibleMessages.length === 0 &&
+    typingParticipants.length === 0 &&
+    !showAgentThinking &&
+    !showPreparing
+  ) {
     return null;
   }
 
@@ -178,6 +204,7 @@ export function RoomMessageList({
           );
         })}
         {showAgentThinking && <AgentThinkingBubble agent={agent} reasoning={liveReasoning} />}
+        {showPreparing && <GeneratingIndicator />}
       </div>
     </section>
   );

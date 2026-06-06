@@ -38,6 +38,7 @@ interface CollaborativeThreadProps {
   selectedTimelineId: string | null;
   isPlayingDemo: boolean;
   isAgentThinking: boolean;
+  isPreparingTurn: boolean;
   liveReasoning: string;
   onViewChange: (view: RoomActiveView) => void;
   onSelectTimeline: (timelineId: string, markerId: string) => void;
@@ -57,6 +58,7 @@ export function CollaborativeThread({
   selectedTimelineId,
   isPlayingDemo,
   isAgentThinking,
+  isPreparingTurn,
   liveReasoning,
   onViewChange,
   onSelectTimeline,
@@ -99,6 +101,7 @@ export function CollaborativeThread({
           draft={draft}
           isPlayingDemo={isPlayingDemo}
           isAgentThinking={isAgentThinking}
+          isPreparingTurn={isPreparingTurn}
           liveReasoning={liveReasoning}
           hasOptions={hasOptions}
           canOpenFinal={canOpenFinal}
@@ -190,6 +193,7 @@ function ChatView({
   draft,
   isPlayingDemo,
   isAgentThinking,
+  isPreparingTurn,
   liveReasoning,
   hasOptions,
   canOpenFinal,
@@ -203,6 +207,7 @@ function ChatView({
   draft: string;
   isPlayingDemo: boolean;
   isAgentThinking: boolean;
+  isPreparingTurn: boolean;
   liveReasoning: string;
   hasOptions: boolean;
   canOpenFinal: boolean;
@@ -215,7 +220,7 @@ function ChatView({
     selfId: activeUserId,
     enabled: room.stage !== "idle",
   });
-  const scrollSignal = `${room.messages.length}:${room.typing_participants.length}:${tick}:${isAgentThinking ? 1 : 0}:${liveReasoning.length}`;
+  const scrollSignal = `${room.messages.length}:${room.typing_participants.length}:${tick}:${isAgentThinking ? 1 : 0}:${isPreparingTurn ? 1 : 0}:${liveReasoning.length}`;
   const { pinned, scrollToBottom, setScrollNode } = useAutoScroll(scrollSignal);
 
   const submit = () => {
@@ -267,6 +272,7 @@ function ChatView({
               hiddenIds={hiddenIds}
               agentThinking={isAgentThinking}
               liveReasoning={liveReasoning}
+              preparing={isPreparingTurn}
             />
 
             {hasOptions && (

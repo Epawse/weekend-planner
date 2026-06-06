@@ -21,6 +21,7 @@ export default function HomePage() {
     isLoading,
     isPlayingDemo,
     isAgentThinking,
+    isPreparingTurn,
     liveReasoning,
     error,
     reloadRoom,
@@ -173,6 +174,7 @@ export default function HomePage() {
         selectedTimelineId={effectiveTimelineId}
         isPlayingDemo={isPlayingDemo}
         isAgentThinking={isAgentThinking}
+        isPreparingTurn={isPreparingTurn}
         liveReasoning={liveReasoning}
         onViewChange={setActiveView}
         onSelectTimeline={handleSelectTimeline}

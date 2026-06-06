@@ -46,8 +46,10 @@ interactive send was routed through a new streaming LLM endpoint so its reasonin
    Gemini-primary demo.
 2. Mid-stream SSE drop after the server committed the user message → the non-streaming
    fallback re-appends it. Accepted for in-memory demo scope (commented in `sendMessage`).
-3. Auto-demo "member before any thinking" is only strict for interactive send; in the demo
-   the "正在思考" bubble shows during the LLM wait, then member→agent reveal. Manual visual check.
+3. ~~Auto-demo "member before any thinking"~~ — RESOLVED (Option A): the demo now shows a
+   neutral "正在生成对话…" during the LLM wait, buffers reasoning, then reveals member lines →
+   "正在思考" with reasoning replayed → agent reply. Thinking never precedes member speech.
+   (Interactive send unchanged — its optimistic message already precedes thinking.)
 
 ## Next
 - Phase 3.4 commit (pending user confirmation), then `/trellis:finish-work`.
