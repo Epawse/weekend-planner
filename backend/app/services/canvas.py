@@ -208,9 +208,7 @@ def _build_timeline(activities: list[dict]) -> list[CanvasTimelineItem]:
                 address=_scrub_user_text(str(activity.get("venue_address", ""))),
                 map_marker_id=marker_id,
                 evidence_ids=[
-                    str(item)
-                    for item in activity.get("evidence_ids", [])
-                    if isinstance(item, str) and item.strip()
+                    str(item) for item in activity.get("evidence_ids", []) if isinstance(item, str) and item.strip()
                 ],
                 actions=_activity_actions(activity),
             )
@@ -365,11 +363,7 @@ def _build_feedback_change_summary(state: dict) -> FeedbackChangeSummary | None:
             for item in raw_summary.get("changed", [])
             if isinstance(item, str) and item.strip()
         ][:6],
-        note=(
-            _scrub_user_text(str(raw_summary.get("note")))
-            if raw_summary.get("note")
-            else None
-        ),
+        note=(_scrub_user_text(str(raw_summary.get("note"))) if raw_summary.get("note") else None),
     )
 
 

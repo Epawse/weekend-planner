@@ -118,9 +118,7 @@ def _apply_distance_feedback(plan: dict, state: dict) -> dict:
     current_travel = int(plan.get("total_travel_minutes", 999) or 999)
     candidates = _candidate_plans(state)
     closer = [
-        candidate
-        for candidate in candidates
-        if int(candidate.get("total_travel_minutes", 999) or 999) < current_travel
+        candidate for candidate in candidates if int(candidate.get("total_travel_minutes", 999) or 999) < current_travel
     ]
     if closer:
         best = min(closer, key=lambda item: int(item.get("total_travel_minutes", 999) or 999))

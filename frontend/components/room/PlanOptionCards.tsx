@@ -8,7 +8,7 @@ import type { PlanOption, ParticipantId } from "@/lib/types";
 
 interface PlanOptionCardsProps {
   options: PlanOption[];
-  activePlanId: string;
+  activePlanId: string | null;
   activeUserId: ParticipantId;
   onSelectPlan: (planId: string) => void;
   onVote: (planId: string) => void;
@@ -21,6 +21,8 @@ export function PlanOptionCards({
   onSelectPlan,
   onVote,
 }: PlanOptionCardsProps) {
+  if (options.length === 0) return null;
+
   return (
     <section className="grid gap-3 xl:grid-cols-3">
       {options.map((option) => {

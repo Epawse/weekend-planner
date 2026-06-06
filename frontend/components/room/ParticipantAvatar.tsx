@@ -14,6 +14,8 @@ const PARTICIPANT_LABELS: Record<ParticipantId, string> = {
   green: "绿",
   blue: "蓝",
   pink: "粉",
+  wife: "妻",
+  child: "童",
   agent: "AI",
 };
 
@@ -27,6 +29,10 @@ function avatarColor(id: ParticipantId | undefined) {
       return "bg-blue-500 text-white";
     case "pink":
       return "bg-pink-500 text-white";
+    case "wife":
+      return "bg-purple-500 text-white";
+    case "child":
+      return "bg-amber-400 text-amber-950";
     case "agent":
       return "bg-zinc-900 text-white";
     default:

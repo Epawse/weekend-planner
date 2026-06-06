@@ -256,12 +256,9 @@ async def test_real_friend_inputs_regression(user_input: str) -> None:
     dinner = next(activity for activity in activities if activity["type"] == "eat")
     play = next(activity for activity in activities if activity["type"] == "play")
     assert "17:30" <= dinner["start_time"] <= "19:00"
-    assert (
-        _time_to_minutes(play["start_time"])
-        + int(play["duration_minutes"])
-        + int(dinner.get("travel_from_prev_minutes", 0))
-        == _time_to_minutes(dinner["start_time"])
-    )
+    assert _time_to_minutes(play["start_time"]) + int(play["duration_minutes"]) + int(
+        dinner.get("travel_from_prev_minutes", 0)
+    ) == _time_to_minutes(dinner["start_time"])
     extra = next(activity for activity in activities if activity["type"] == "extra")
     assert extra["action_details"]["optional_extension"] is True
     assert "朋友局安排好了" in plan["share_text"]

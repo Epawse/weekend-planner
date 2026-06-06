@@ -88,8 +88,7 @@ async def parse_intent_node(state: PlannerState) -> dict:
         friend_strategy = {
             "title": "朋友局适配策略",
             "summary": (
-                f"{friend_profile['group_composition']}，偏好："
-                f"{'、'.join(friend_profile.get('preferences', []))}。"
+                f"{friend_profile['group_composition']}，偏好：{'、'.join(friend_profile.get('preferences', []))}。"
             ),
         }
         writer(

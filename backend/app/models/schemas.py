@@ -66,6 +66,13 @@ class RoomExecuteRequest(BaseModel):
     actor_id: str = Field(default="red", description="Participant id")
 
 
+class RoomScenarioRequest(BaseModel):
+    """Request body for switching a collaborative room scenario."""
+
+    scenario: Literal["family", "friends"] = Field(default="friends", description="Target room scenario")
+    actor_id: str = Field(default="red", description="Participant id")
+
+
 class HealthResponse(BaseModel):
     """Response for GET /api/health."""
 

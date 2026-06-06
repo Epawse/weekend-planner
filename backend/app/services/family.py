@@ -875,10 +875,7 @@ def _build_candidate_checks(
     )
     strong_intent = bool(profile.get("strong_child_intent"))
     main_matches_intent = not strong_intent or _is_trusted_strong_child_main_activity(main_play_features)
-    rhythm_ok = bool(first_activity) and (
-        profile.get("prefer_eat_first")
-        or first_activity.get("type") == "play"
-    )
+    rhythm_ok = bool(first_activity) and (profile.get("prefer_eat_first") or first_activity.get("type") == "play")
     play_ok = all(
         activity.get("family_features", {}).get("child_friendly", True)
         and activity.get("family_features", {}).get("age_supported", True)
@@ -921,11 +918,7 @@ def _build_candidate_checks(
             "main_intent",
             "主活动命中意图",
             "pass" if main_matches_intent else "fail",
-            (
-                "已优先选择强亲子主活动"
-                if strong_intent
-                else "用户未指定亲子乐园，按家庭低风险活动匹配"
-            )
+            ("已优先选择强亲子主活动" if strong_intent else "用户未指定亲子乐园，按家庭低风险活动匹配")
             if main_matches_intent
             else "用户明确想去亲子乐园，但当前主活动缺少可信强亲子POI来源/证据",
         ),
@@ -949,17 +942,13 @@ def _build_candidate_checks(
             "rhythm",
             "家庭出游节奏",
             "pass" if rhythm_ok else "fail",
-            "默认按主亲子活动 → 健康晚餐 → 轻量收尾安排"
-            if rhythm_ok
-            else "首站不是亲子活动，和家庭出游习惯不一致",
+            "默认按主亲子活动 → 健康晚餐 → 轻量收尾安排" if rhythm_ok else "首站不是亲子活动，和家庭出游习惯不一致",
         ),
         _check_status(
             "dinner_time",
             "晚餐时间合理",
             dinner_status,
-            "晚餐安排在17:00-18:30家庭用餐窗口"
-            if dinner_status == "pass"
-            else "晚餐未落在17:00-18:30的家庭用餐窗口",
+            "晚餐安排在17:00-18:30家庭用餐窗口" if dinner_status == "pass" else "晚餐未落在17:00-18:30的家庭用餐窗口",
         ),
         _check_status(
             "route_comfort",
@@ -1111,10 +1100,7 @@ def _build_pre_departure_tips(plan: dict) -> list[str]:
 
 def _build_restaurant_request(plan: dict) -> str:
     profile = plan.get("family_profile") or {}
-    return (
-        f"{profile.get('party_size', 3)}人桌，"
-        f"需要儿童椅，少油/轻食优先，孩子{profile.get('child_age', 5)}岁"
-    )
+    return f"{profile.get('party_size', 3)}人桌，需要儿童椅，少油/轻食优先，孩子{profile.get('child_age', 5)}岁"
 
 
 def _find_matching_candidate(plan: dict, candidates: list[dict]) -> dict | None:
@@ -1216,11 +1202,7 @@ def _format_poi_metadata(activity: dict) -> str:
 
 
 def _home_coords_from_candidate(candidate: dict) -> list[float] | None:
-    coordinates = (
-        candidate.get("route_geojson", {})
-        .get("geometry", {})
-        .get("coordinates", [])
-    )
+    coordinates = candidate.get("route_geojson", {}).get("geometry", {}).get("coordinates", [])
     if coordinates and isinstance(coordinates[0], list) and len(coordinates[0]) == 2:
         return coordinates[0]
     return None

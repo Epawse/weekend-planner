@@ -59,9 +59,7 @@ class LLMProviderFactory:
             # Gemini 3.x maps graduated thinking straight to `reasoning_effort`
             # (unlike DeepSeek's thinking:{type} flag). It cannot fully disable
             # thinking, so reasoning still consumes part of the max_tokens budget.
-            kwargs["model_kwargs"] = {
-                "extra_body": {"reasoning_effort": settings.thinking_effort}
-            }
+            kwargs["model_kwargs"] = {"extra_body": {"reasoning_effort": settings.thinking_effort}}
         return ChatOpenAI(**kwargs)
 
     def _create_openai(self, temperature: float = 0.7) -> BaseChatModel:

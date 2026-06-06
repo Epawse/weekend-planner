@@ -74,6 +74,11 @@ export function VenueReactionBar({ timeline, reactions, onReact }: VenueReaction
 }
 
 function venueIdFromTimeline(item: CanvasTimelineItem) {
+  if (item.display_name.includes("绘本")) return "venue_picture_book";
+  if (item.display_name.includes("低脂") || item.display_name.includes("家庭餐厅")) return "venue_family_light_dinner";
+  if (item.display_name.includes("亲子") || item.display_name.includes("科学馆") || item.display_name.includes("乐园")) {
+    return "venue_family_play";
+  }
   if (item.display_name.includes("火锅")) return "venue_hotpot";
   if (item.display_name.includes("咖啡")) return "venue_coffee";
   if (item.display_name.includes("桌游")) return "venue_boardgame";

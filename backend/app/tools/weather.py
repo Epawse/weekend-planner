@@ -8,6 +8,7 @@ from app.config import settings
 
 logger = structlog.get_logger()
 
+
 def _get_qweather_url(path: str) -> str:
     return f"https://{settings.qweather_api_host}{path}"
 

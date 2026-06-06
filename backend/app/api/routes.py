@@ -19,6 +19,7 @@ from app.models.schemas import (
     RoomExecuteRequest,
     RoomMessageRequest,
     RoomReactionRequest,
+    RoomScenarioRequest,
     RoomVoteRequest,
 )
 from app.services.feedback import apply_feedback_to_state
@@ -26,9 +27,11 @@ from app.services.room import (
     add_reaction,
     add_room_message,
     add_vote,
+    advance_room,
     execute_room,
     get_room,
     reset_room,
+    set_room_scenario,
     simulate_room,
 )
 
@@ -262,9 +265,15 @@ async def get_collaboration_room(room_id: str, user: str = "red"):
 
 
 @router.post("/room/{room_id}/reset")
-async def reset_collaboration_room(room_id: str, user: str = "red"):
+async def reset_collaboration_room(room_id: str, user: str = "red", scenario: str | None = None):
     """Reset the collaborative demo room to its baseline state."""
-    return reset_room(room_id, active_user_id=user)
+    return reset_room(room_id, active_user_id=user, scenario=scenario)
+
+
+@router.post("/room/{room_id}/scenario")
+async def switch_collaboration_room_scenario(room_id: str, request: RoomScenarioRequest):
+    """Switch the collaborative room scenario and reset to idle."""
+    return set_room_scenario(room_id, scenario=request.scenario, active_user_id=request.actor_id)
 
 
 @router.post("/room/{room_id}/message")
@@ -291,10 +300,16 @@ async def post_room_reaction(room_id: str, request: RoomReactionRequest):
     )
 
 
+@router.post("/room/{room_id}/advance")
+async def post_room_advance(room_id: str, user: str = "red"):
+    """Advance the staged collaborative demo by one visible event."""
+    return advance_room(room_id, active_user_id=user)
+
+
 @router.post("/room/{room_id}/simulate")
-async def post_room_simulation(room_id: str, user: str = "red"):
+async def post_room_simulation(room_id: str, user: str = "red", scenario: str | None = None):
     """Apply the stable collaborative demo script."""
-    return simulate_room(room_id, active_user_id=user)
+    return simulate_room(room_id, active_user_id=user, scenario=scenario)
 
 
 @router.post("/room/{room_id}/execute")

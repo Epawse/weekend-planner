@@ -4,8 +4,22 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-ParticipantId = Literal["red", "green", "blue", "pink", "agent"]
+ParticipantId = Literal["red", "green", "blue", "pink", "wife", "child", "agent"]
 RoomScenario = Literal["friends", "family"]
+RoomStage = Literal[
+    "idle",
+    "host_prompted",
+    "agent_planning",
+    "members_invited",
+    "members_typing",
+    "opinions_collected",
+    "options_ready",
+    "voting",
+    "consensus_ready",
+    "final_plan_ready",
+    "executing",
+    "done",
+]
 MessageType = Literal["user_message", "agent_message", "system_message"]
 VoteType = Literal["support", "oppose"]
 ReactionType = Literal["like", "neutral", "veto", "too_far", "too_noisy", "too_expensive", "food_exclusion"]
@@ -28,8 +42,8 @@ class Participant(BaseModel):
     name: str
     color: str
     avatar: str
-    role: Literal["host", "member", "agent"]
-    status: Literal["online", "invited", "agent"] = "online"
+    role: Literal["host", "member", "profile", "agent"]
+    status: Literal["online", "invited", "profile", "agent"] = "online"
     preference_profile: ParticipantProfile
 
 
@@ -145,6 +159,12 @@ class RoomState(BaseModel):
 
     room_id: str
     scenario: RoomScenario
+    available_scenarios: list[RoomScenario] = Field(default_factory=lambda: ["friends", "family"])
+    stage: RoomStage = "idle"
+    stage_title: str = "等待发起需求"
+    stage_description: str = ""
+    typing_participants: list[ParticipantId] = Field(default_factory=list)
+    demo_step_index: int = 0
     host_user_id: ParticipantId
     active_user_id: ParticipantId
     participants: list[Participant]

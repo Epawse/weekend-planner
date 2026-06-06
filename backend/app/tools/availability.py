@@ -140,10 +140,7 @@ async def check_family_availability(
                 "reservation_required": True,
                 "age_supported": child_age <= 8 or "儿童" in normalized or "亲子" in normalized,
                 "source": "mock_business_api",
-                "message": (
-                    f"亲子活动{'余票充足' if tickets_available else '余票紧张'}，"
-                    f"预计排队{queue_minutes}分钟"
-                ),
+                "message": (f"亲子活动{'余票充足' if tickets_available else '余票紧张'}，预计排队{queue_minutes}分钟"),
             }
 
         logger.info(

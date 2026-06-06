@@ -129,9 +129,7 @@ def build_friend_strategy(profile: dict) -> dict:
     """Convert friend profile into explicit strategy buckets."""
     return {
         "title": "朋友局适配策略",
-        "summary": (
-            f"{profile.get('group_composition', '4人朋友局')}，优先有吃有玩、适合聊天拍照、路线集中。"
-        ),
+        "summary": (f"{profile.get('group_composition', '4人朋友局')}，优先有吃有玩、适合聊天拍照、路线集中。"),
         "non_negotiables": [
             "总时长控制在4-6小时",
             f"餐厅需支持{profile.get('party_size', 4)}人桌",
@@ -346,9 +344,10 @@ def _apply_friend_schedule(candidate: dict, activities: list[dict], profile: dic
             if index > 0 and gap_minutes >= 20:
                 previous_activity = activities[index - 1]
                 if previous_activity.get("type") == "play":
-                    previous_activity["duration_minutes"] = int(
-                        previous_activity.get("duration_minutes", _normalized_duration(previous_activity))
-                    ) + gap_minutes
+                    previous_activity["duration_minutes"] = (
+                        int(previous_activity.get("duration_minutes", _normalized_duration(previous_activity)))
+                        + gap_minutes
+                    )
                     previous_activity["schedule_note"] = "展览 + 周边拍照轻逛"
                     previous_activity.setdefault("action_details", {})["visible_buffer_minutes"] = gap_minutes
             current = DINNER_START_MINUTES

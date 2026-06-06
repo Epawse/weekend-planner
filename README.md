@@ -16,7 +16,7 @@ LangGraph Plan-and-Execute · 确定性空间分析引擎 · Gemini 推理（Dee
 ## ✨ 功能特性
 
 - **🧭 Weekend Planner AI Mode**：面向家庭和朋友场景的本地生活计划与执行工作台。系统会将一句自然语言目标拆解为活动、餐饮、续摊、路线、可用性和执行动作多个子任务，结合真实地图工具、场景策略、演示业务接口和证据校验生成 Plan Canvas；用户可以继续反馈“近一点、换室内、不要火锅、早点回家”，系统会在当前计划上增量更新约束并重规划，确认后继续完成演示预约、订座、备注和分享。
-- **👥 协作房间**：小红发起朋友聚会后，可邀请小绿、小蓝、小粉进入同一个 AI Mode 房间。成员可以表达偏好、给 A/B/C 方案投票、对地点点赞或反对；Agent 会把这些信号转成群体约束，推荐折中方案并解释照顾了谁、牺牲了什么。
+- **👥 协作房间**：小红发起朋友聚会后，可邀请小绿、小蓝、小粉进入同一个 AI Mode 房间。成员会逐步发言、出现“正在输入...”状态、给 A/B/C 方案投票、对地点点赞或反对；Agent 会把这些信号转成群体约束，推荐折中方案并解释照顾了谁、牺牲了什么。家庭出游也可切换为“小明 + 老婆确认 + 孩子画像约束”的协作流程。
 - **🧠 意图理解**：自然语言描述需求（"周末带娃在望京附近玩半天，要有公园和好吃的"），自动解析场景、出发点、偏好。
 - **📍 确定性空间分析**：不靠 LLM 拍脑袋，而是用真实数据计算可达范围与候选场所——
   - 基于 **OpenRouteService** 等时圈（isochrone）算出"X 分钟可达"的真实多边形；
@@ -205,11 +205,14 @@ npm run dev
 | `POST` | `/api/plan/create` | 启动规划，**SSE** 流式推送思考 / 工具 / 方案事件，到 `present_plan` 处中断等待确认 |
 | `POST` | `/api/plan/approve` | 携带 `session_id` + `approved` 恢复图执行，**SSE** 流式推送执行进度 |
 | `POST` | `/api/plan/feedback` | 对当前 Plan Canvas 增量应用“近一点 / 换室内 / 不要火锅 / 早点回家”等反馈 |
-| `GET` | `/api/room/{room_id}` | 获取协作房间状态，支持 `?user=red/green/blue/pink` |
+| `GET` | `/api/room/{room_id}` | 获取协作房间状态，支持 `?user=red/green/blue/pink/wife`；默认返回 idle 空房间 |
+| `POST` | `/api/room/{room_id}/reset` | 重置协作房间，可带 `?scenario=friends/family` |
+| `POST` | `/api/room/{room_id}/scenario` | 切换朋友 / 家庭协作场景并回到 idle |
+| `POST` | `/api/room/{room_id}/advance` | 推进一个可见演示事件：发起、typing、成员消息、三方案、投票、共识、最终方案 |
 | `POST` | `/api/room/{room_id}/message` | 添加成员消息并更新群体记忆 |
 | `POST` | `/api/room/{room_id}/vote` | 添加方案级投票 |
 | `POST` | `/api/room/{room_id}/reaction` | 添加地点级反应 |
-| `POST` | `/api/room/{room_id}/simulate` | 执行稳定协作演示脚本 |
+| `POST` | `/api/room/{room_id}/simulate` | 一次性执行稳定协作演示脚本到最终方案态 |
 | `POST` | `/api/room/{room_id}/execute` | 由发起人确认执行当前共识方案 |
 
 SSE 事件类型：`session` · `thinking` · `tool_calling` · `tool_result` · `node_complete` · `plan_ready` · `interrupted` · `step_start` · `step_complete` · `all_complete` · `done` · `error`。

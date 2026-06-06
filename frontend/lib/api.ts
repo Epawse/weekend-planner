@@ -8,6 +8,7 @@ import type {
   RoomExecuteRequest,
   RoomMessageRequest,
   RoomReactionRequest,
+  RoomScenarioRequest,
   RoomState,
   RoomVoteRequest,
 } from "./types";
@@ -141,8 +142,24 @@ export async function fetchRoom(roomId: string, userId: string): Promise<RoomSta
   return parseRoomResponse(response);
 }
 
-export async function resetRoom(roomId: string, userId: string): Promise<RoomState> {
-  const response = await fetch(`${API_BASE}/api/room/${roomId}/reset?user=${encodeURIComponent(userId)}`, {
+export async function resetRoom(roomId: string, userId: string, scenario?: string): Promise<RoomState> {
+  const params = new URLSearchParams({ user: userId });
+  if (scenario) params.set("scenario", scenario);
+  const response = await fetch(`${API_BASE}/api/room/${roomId}/reset?${params.toString()}`, { method: "POST" });
+  return parseRoomResponse(response);
+}
+
+export async function switchRoomScenario(roomId: string, request: RoomScenarioRequest): Promise<RoomState> {
+  const response = await fetch(`${API_BASE}/api/room/${roomId}/scenario`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  return parseRoomResponse(response);
+}
+
+export async function advanceRoom(roomId: string, userId: string): Promise<RoomState> {
+  const response = await fetch(`${API_BASE}/api/room/${roomId}/advance?user=${encodeURIComponent(userId)}`, {
     method: "POST",
   });
   return parseRoomResponse(response);
@@ -175,8 +192,10 @@ export async function sendRoomReaction(roomId: string, request: RoomReactionRequ
   return parseRoomResponse(response);
 }
 
-export async function simulateRoom(roomId: string, userId: string): Promise<RoomState> {
-  const response = await fetch(`${API_BASE}/api/room/${roomId}/simulate?user=${encodeURIComponent(userId)}`, {
+export async function simulateRoom(roomId: string, userId: string, scenario?: string): Promise<RoomState> {
+  const params = new URLSearchParams({ user: userId });
+  if (scenario) params.set("scenario", scenario);
+  const response = await fetch(`${API_BASE}/api/room/${roomId}/simulate?${params.toString()}`, {
     method: "POST",
   });
   return parseRoomResponse(response);

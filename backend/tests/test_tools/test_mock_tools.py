@@ -31,9 +31,7 @@ async def test_check_availability_returns_success_envelope() -> None:
 
 
 async def test_check_availability_passes_through_venue_id() -> None:
-    result = await check_availability.ainvoke(
-        {"venue_name": "蓝色港湾", "venue_id": "B0FF123", "party_size": 2}
-    )
+    result = await check_availability.ainvoke({"venue_name": "蓝色港湾", "venue_id": "B0FF123", "party_size": 2})
 
     assert result["status"] == "success"
     assert result["data"]["venue_id"] == "B0FF123"

@@ -350,7 +350,20 @@ export interface PlanFeedbackResponse {
   plan_canvas: PlanCanvasState;
 }
 
-export type ParticipantId = "red" | "green" | "blue" | "pink" | "agent";
+export type ParticipantId = "red" | "green" | "blue" | "pink" | "wife" | "child" | "agent";
+export type RoomStage =
+  | "idle"
+  | "host_prompted"
+  | "agent_planning"
+  | "members_invited"
+  | "members_typing"
+  | "opinions_collected"
+  | "options_ready"
+  | "voting"
+  | "consensus_ready"
+  | "final_plan_ready"
+  | "executing"
+  | "done";
 export type RoomMessageType = "user_message" | "agent_message" | "system_message";
 export type RoomVoteType = "support" | "oppose";
 export type RoomReactionType =
@@ -375,8 +388,8 @@ export interface Participant {
   name: string;
   color: string;
   avatar: string;
-  role: "host" | "member" | "agent";
-  status: "online" | "invited" | "agent";
+  role: "host" | "member" | "profile" | "agent";
+  status: "online" | "invited" | "profile" | "agent";
   preference_profile: ParticipantProfile;
 }
 
@@ -468,6 +481,12 @@ export interface RoomExecutionState {
 export interface RoomState {
   room_id: string;
   scenario: Scenario;
+  available_scenarios: Scenario[];
+  stage: RoomStage;
+  stage_title: string;
+  stage_description: string;
+  typing_participants: ParticipantId[];
+  demo_step_index: number;
   host_user_id: ParticipantId;
   active_user_id: ParticipantId;
   participants: Participant[];
@@ -500,6 +519,11 @@ export interface RoomReactionRequest {
 }
 
 export interface RoomExecuteRequest {
+  actor_id: ParticipantId;
+}
+
+export interface RoomScenarioRequest {
+  scenario: Scenario;
   actor_id: ParticipantId;
 }
 

@@ -9,8 +9,8 @@ import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
 import { Button } from "@/components/ui/button";
 import { useRoom } from "@/hooks/useRoom";
 import { cn } from "@/lib/utils";
-import { AlertTriangle, FileText, Map, RefreshCw } from "lucide-react";
-import type { ParticipantId, RoomReactionType } from "@/lib/types";
+import { AlertTriangle, FileText, Map, MapPinned, RefreshCw } from "lucide-react";
+import type { ParticipantId, RoomReactionType, Scenario } from "@/lib/types";
 
 type RightTab = "map" | "sources";
 
@@ -19,13 +19,15 @@ export default function HomePage() {
   const {
     room,
     isLoading,
+    isPlayingDemo,
     error,
     reloadRoom,
     resetDemo,
+    switchScenario,
     sendMessage,
     voteForPlan,
     reactToVenue,
-    simulateDemo,
+    playDemo,
     executeActivePlan,
   } = useRoom(roomId, userId);
 
@@ -36,6 +38,7 @@ export default function HomePage() {
 
   const selectedOption = useMemo(() => {
     if (!room) return null;
+    if (room.plan_options.length === 0) return null;
     const displayPlanId = room.plan_options.some((option) => option.option_id === selectedPlanId)
       ? selectedPlanId
       : room.active_plan_id;
@@ -109,7 +112,7 @@ export default function HomePage() {
     );
   }
 
-  if (!room || !activeCanvas) {
+  if (!room) {
     return (
       <div className="flex h-full items-center justify-center bg-zinc-50 p-8 text-center">
         <div>
@@ -126,19 +129,33 @@ export default function HomePage() {
   }
 
   return (
-    <div className="grid h-full grid-cols-1 bg-zinc-100 lg:grid-cols-[320px_minmax(0,1fr)_420px] xl:grid-cols-[340px_minmax(0,1fr)_460px]">
-      <RoomSidebar room={room} activeUserId={userId} onSimulate={simulateDemo} onReset={resetDemo} />
+    <div className="grid h-full min-h-0 grid-cols-1 bg-zinc-100 lg:grid-cols-[320px_minmax(0,1fr)_420px] xl:grid-cols-[340px_minmax(0,1fr)_460px]">
+      <RoomSidebar
+        room={room}
+        activeUserId={room.active_user_id}
+        isPlayingDemo={isPlayingDemo}
+        onPlayDemo={playDemo}
+        onReset={resetDemo}
+        onScenarioChange={(scenario) => {
+          setSelectedPlanId(null);
+          setSelectedTimelineId(null);
+          setSelectedMarkerId(null);
+          void switchScenario(scenario);
+        }}
+      />
 
       <CollaborativeThread
         room={room}
-        activeUserId={userId}
-        selectedPlanId={selectedOption?.option_id ?? room.active_plan_id}
+        activeUserId={room.active_user_id}
+        selectedPlanId={selectedOption?.option_id ?? null}
         selectedTimelineId={effectiveTimelineId}
+        isPlayingDemo={isPlayingDemo}
         onSelectTimeline={handleSelectTimeline}
         onSelectPlan={handleSelectPlan}
         onVote={handleVote}
         onReact={handleReact}
         onSendMessage={sendMessage}
+        onPlayDemo={playDemo}
         onExecute={executeActivePlan}
       />
 
@@ -166,17 +183,32 @@ export default function HomePage() {
           })}
         </div>
 
+        {activeCanvas && (
+          <div className="border-b border-zinc-200 px-4 py-2 text-xs text-zinc-500">
+            当前显示：
+            <span className="font-medium text-zinc-800">
+              {room.stage === "final_plan_ready" || room.stage === "done"
+                ? selectedOption?.option_id === room.active_plan_id
+                  ? "最终方案"
+                  : selectedOption?.label
+                : selectedOption?.label}
+            </span>
+          </div>
+        )}
+
         <div className="min-h-0 flex-1">
-          {rightTab === "map" ? (
-            <div className="h-full p-3">
-              <MapView
-                mapData={null}
-                planCanvas={activeCanvas}
-                selectedMarkerId={effectiveMarkerId}
-                onSelectMarker={handleSelectMarker}
-                className="h-full w-full"
-              />
-            </div>
+          {!activeCanvas ? (
+            <RightPanelWaiting />
+          ) : rightTab === "map" ? (
+              <div className="h-full p-3">
+                <MapView
+                  mapData={null}
+                  planCanvas={activeCanvas}
+                  selectedMarkerId={effectiveMarkerId}
+                  onSelectMarker={handleSelectMarker}
+                  className="h-full w-full"
+                />
+              </div>
           ) : (
             <EvidencePanel
               evidence={activeCanvas.evidence_cards}
@@ -192,10 +224,14 @@ export default function HomePage() {
 }
 
 function normalizeUser(value: string | null): ParticipantId {
-  if (value === "green" || value === "blue" || value === "pink" || value === "red") {
+  if (value === "green" || value === "blue" || value === "pink" || value === "wife" || value === "red") {
     return value;
   }
   return "red";
+}
+
+function normalizeScenario(value: string | null): Scenario {
+  return value === "family" ? "family" : "friends";
 }
 
 function initialRouteState(): { roomId: string; userId: ParticipantId } {
@@ -203,8 +239,23 @@ function initialRouteState(): { roomId: string; userId: ParticipantId } {
     return { roomId: "demo_friends_room", userId: "red" };
   }
   const params = new URLSearchParams(window.location.search);
+  const scenario = normalizeScenario(params.get("scenario"));
   return {
-    roomId: params.get("room") || "demo_friends_room",
+    roomId: params.get("room") || (scenario === "family" ? "demo_family_room" : "demo_friends_room"),
     userId: normalizeUser(params.get("user")),
   };
+}
+
+function RightPanelWaiting() {
+  return (
+    <div className="flex h-full items-center justify-center p-8 text-center">
+      <div>
+        <MapPinned className="mx-auto h-8 w-8 text-zinc-300" />
+        <div className="mt-3 text-sm font-semibold text-zinc-800">地图等待方案生成</div>
+        <p className="mt-2 text-xs leading-5 text-zinc-500">
+          发起需求或点击自动演示后，右侧会跟随 A/B/C 或最终方案切换路线、地点卡和来源证据。
+        </p>
+      </div>
+    </div>
+  );
 }
