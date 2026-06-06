@@ -26,8 +26,10 @@ from app.services.feedback import apply_feedback_to_state
 from app.services.room import (
     add_reaction,
     add_room_message,
+    add_room_message_stream,
     add_vote,
     advance_room_agentic,
+    advance_room_agentic_stream,
     execute_room,
     get_room,
     reset_room,
@@ -282,6 +284,37 @@ async def post_room_message(room_id: str, request: RoomMessageRequest):
     return add_room_message(room_id, actor_id=request.actor_id, content=request.content)
 
 
+@router.post("/room/{room_id}/message/stream")
+async def post_room_message_stream(room_id: str, request: RoomMessageRequest):
+    """Add a participant message while streaming the agent's reasoning via SSE.
+
+    Commits the user message first, emits ``reasoning`` events (incremental
+    rationale), then a single ``done`` event carrying the full updated room state.
+    """
+
+    async def event_generator() -> AsyncGenerator[dict, None]:
+        try:
+            async for event in add_room_message_stream(room_id, actor_id=request.actor_id, content=request.content):
+                if event["type"] == "reasoning":
+                    yield {
+                        "event": "reasoning",
+                        "data": json.dumps({"delta": event["delta"]}, ensure_ascii=False),
+                    }
+                elif event["type"] == "done":
+                    yield {
+                        "event": "done",
+                        "data": json.dumps({"room": event["room"]}, ensure_ascii=False, default=str),
+                    }
+        except Exception as e:  # noqa: BLE001 - surface as an SSE error event
+            logger.error("room_message_stream_error", error=str(e), room_id=room_id)
+            yield {"event": "error", "data": json.dumps({"message": str(e)}, ensure_ascii=False)}
+
+    return EventSourceResponse(
+        event_generator(),
+        headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache, no-transform"},
+    )
+
+
 @router.post("/room/{room_id}/vote")
 async def post_room_vote(room_id: str, request: RoomVoteRequest):
     """Record a participant plan vote."""
@@ -304,6 +337,37 @@ async def post_room_reaction(room_id: str, request: RoomReactionRequest):
 async def post_room_advance(room_id: str, user: str = "red", mode: str = "auto"):
     """Advance the collaborative room by one visible event."""
     return await advance_room_agentic(room_id, active_user_id=user, agent_mode=mode)
+
+
+@router.post("/room/{room_id}/advance/stream")
+async def post_room_advance_stream(room_id: str, user: str = "red", mode: str = "auto"):
+    """Advance the room while streaming the agent's visible reasoning via SSE.
+
+    Emits ``reasoning`` events (incremental rationale) followed by a single
+    ``done`` event carrying the full updated room state.
+    """
+
+    async def event_generator() -> AsyncGenerator[dict, None]:
+        try:
+            async for event in advance_room_agentic_stream(room_id, active_user_id=user, agent_mode=mode):
+                if event["type"] == "reasoning":
+                    yield {
+                        "event": "reasoning",
+                        "data": json.dumps({"delta": event["delta"]}, ensure_ascii=False),
+                    }
+                elif event["type"] == "done":
+                    yield {
+                        "event": "done",
+                        "data": json.dumps({"room": event["room"]}, ensure_ascii=False, default=str),
+                    }
+        except Exception as e:  # noqa: BLE001 - surface as an SSE error event
+            logger.error("room_advance_stream_error", error=str(e), room_id=room_id)
+            yield {"event": "error", "data": json.dumps({"message": str(e)}, ensure_ascii=False)}
+
+    return EventSourceResponse(
+        event_generator(),
+        headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache, no-transform"},
+    )
 
 
 @router.post("/room/{room_id}/simulate")

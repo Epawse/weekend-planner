@@ -20,6 +20,8 @@ export default function HomePage() {
     room,
     isLoading,
     isPlayingDemo,
+    isAgentThinking,
+    liveReasoning,
     error,
     reloadRoom,
     resetDemo,
@@ -170,6 +172,8 @@ export default function HomePage() {
         selectedPlanId={selectedOption?.option_id ?? null}
         selectedTimelineId={effectiveTimelineId}
         isPlayingDemo={isPlayingDemo}
+        isAgentThinking={isAgentThinking}
+        liveReasoning={liveReasoning}
         onViewChange={setActiveView}
         onSelectTimeline={handleSelectTimeline}
         onSelectPlan={handleSelectPlan}

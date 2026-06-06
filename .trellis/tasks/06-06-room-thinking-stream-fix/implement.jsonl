@@ -1,0 +1,6 @@
+{"file":".trellis/spec/backend/collaborative-room-contract.md","reason":"New /message/stream must keep RoomState contract, stage rules, scripted fallback, and no-raw-token invariants."}
+{"file":".trellis/spec/backend/llm-provider.md","reason":"Streaming message reuses invoke/fallback provider order; must fall back safely with no key."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"LLM failure on the streaming send must fall back to the deterministic reply, not break the turn."}
+{"file":".trellis/spec/frontend/hook-guidelines.md","reason":"useRoom streaming send/optimistic update and playDemo reveal follow the streaming-hook patterns."}
+{"file":".trellis/spec/frontend/state-management.md","reason":"Optimistic message + reasoning are streaming state in the room hook; backend stays source of truth on done."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Change spans API route, room service, api client, hook, and component."}

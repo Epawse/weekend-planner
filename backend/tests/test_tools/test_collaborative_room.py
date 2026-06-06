@@ -8,6 +8,7 @@ from app.config import settings
 from app.services.llm_room_agent import LLMRoomAgentError, generate_room_patch
 from app.services.room import (
     add_reaction,
+    add_room_message_stream,
     add_vote,
     advance_room,
     advance_room_agentic,
@@ -300,6 +301,75 @@ async def test_agentic_concurrent_advance_is_serialized(monkeypatch) -> None:
     assert room["demo_step_index"] == 2
     assert room["stage"] == "agent_planning"
     assert len(room["messages"]) == 2
+
+
+async def _collect_message_stream(room_id: str, actor_id: str, content: str) -> tuple[str, dict | None]:
+    reasoning = ""
+    room: dict | None = None
+    async for event in add_room_message_stream(room_id, actor_id=actor_id, content=content):
+        if event["type"] == "reasoning":
+            reasoning += event["delta"]
+        elif event["type"] == "done":
+            room = event["room"]
+    return reasoning, room
+
+
+async def test_message_stream_without_llm_key_uses_scripted_reply(monkeypatch) -> None:
+    _clear_llm_keys(monkeypatch)
+    reset_room("msg_stream_no_key", active_user_id="red")
+
+    reasoning, room = await _collect_message_stream("msg_stream_no_key", "red", "周末想和朋友聚一聚，别太远。")
+
+    assert reasoning == ""
+    assert room is not None
+    assert room["agent_mode"] == "scripted"
+    assert room["stage"] == "agent_planning"
+    assert [message["actor_id"] for message in room["messages"]] == ["red", "agent"]
+    assert room["messages"][0]["content"] == "周末想和朋友聚一聚，别太远。"
+
+
+async def test_message_stream_applies_patch_and_attaches_reasoning(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "gemini_api_key", "g-key")
+    reset_room("msg_stream_llm", active_user_id="red")
+
+    async def fake_stream_room_patch(room):
+        yield {"type": "reasoning", "delta": "先看大家的硬约束，"}
+        yield {"type": "reasoning", "delta": "再决定取舍。"}
+        yield {
+            "type": "patch",
+            "patch": RoomPatch(
+                messages=[MessageDraft(speaker_id="agent", text="好，我按近一点、能聊天来收偏好。")],
+                reasoning="先看硬约束，再取舍。",
+            ),
+        }
+
+    monkeypatch.setattr("app.services.room.stream_room_patch", fake_stream_room_patch)
+
+    reasoning, room = await _collect_message_stream("msg_stream_llm", "red", "周末想轻松点，别太远。")
+
+    assert reasoning == "先看大家的硬约束，再决定取舍。"
+    assert room is not None
+    assert room["agent_mode"] == "llm"
+    assert [message["actor_id"] for message in room["messages"]] == ["red", "agent"]
+    assert room["messages"][1]["content"] == "好，我按近一点、能聊天来收偏好。"
+    assert room["messages"][1]["reasoning"] == "先看硬约束，再取舍。"
+
+
+async def test_message_stream_without_agent_reply_falls_back_to_scripted(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "gemini_api_key", "g-key")
+    reset_room("msg_stream_no_agent", active_user_id="red")
+
+    async def fake_stream_room_patch(room):
+        yield {"type": "reasoning", "delta": "想了想，"}
+        yield {"type": "patch", "patch": RoomPatch(messages=[MessageDraft(speaker_id="red", text="我自己又补一句。")])}
+
+    monkeypatch.setattr("app.services.room.stream_room_patch", fake_stream_room_patch)
+
+    _, room = await _collect_message_stream("msg_stream_no_agent", "red", "周末想轻松点，别太远。")
+
+    assert room is not None
+    assert room["agent_mode"] == "fallback"
+    assert [message["actor_id"] for message in room["messages"]] == ["red", "agent"]
 
 
 async def test_generate_room_patch_invalid_json_raises(monkeypatch) -> None:

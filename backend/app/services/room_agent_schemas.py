@@ -127,9 +127,17 @@ class RoomPatch(StrictPatchModel):
     """The only LLM-owned output accepted by the collaborative room."""
 
     next_phase_hint: PatchPhaseHint = "continue_chat"
+    reasoning: str = Field(default="")
     messages: list[MessageDraft] = Field(default_factory=list, max_length=3)
     memory_delta: MemoryDelta = Field(default_factory=MemoryDelta)
     plan_copy_updates: dict[PatchPlanId, PlanCopyUpdate] = Field(default_factory=dict)
     venue_signals: list[VenueSignalDraft] = Field(default_factory=list, max_length=4)
     consensus: ConsensusPatch | None = None
     final_copy: FinalCopyPatch | None = None
+
+    @field_validator("reasoning")
+    @classmethod
+    def clean_reasoning(cls, value: str) -> str:
+        # The model's genuine step reasoning. Truncate (don't reject) so an
+        # over-long thought never fails validation and forces a scripted fallback.
+        return value.strip()[:600]

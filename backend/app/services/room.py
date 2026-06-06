@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncGenerator
 from copy import deepcopy
 from datetime import datetime
 
@@ -10,7 +11,7 @@ import structlog
 
 from app.llm.provider import llm_factory
 from app.services.canvas import build_plan_canvas
-from app.services.llm_room_agent import LLMRoomAgentError, generate_room_patch
+from app.services.llm_room_agent import LLMRoomAgentError, generate_room_patch, stream_room_patch
 from app.services.room_agent_schemas import RoomPatch
 
 DEFAULT_ROOM_ID = "demo_friends_room"
@@ -80,6 +81,51 @@ async def advance_room_agentic(
         return _serialize_room(room, active_user_id)
 
 
+async def advance_room_agentic_stream(
+    room_id: str = DEFAULT_ROOM_ID,
+    active_user_id: str = "red",
+    agent_mode: str = "auto",
+) -> AsyncGenerator[dict, None]:
+    """Advance one room event, streaming the agent's visible reasoning as it thinks.
+
+    Yields ``{"type": "reasoning", "delta": str}`` events while the agent reasons,
+    then a final ``{"type": "done", "room": <serialized room>}``. On any LLM
+    failure it falls back to the deterministic scripted advance and still emits
+    a ``done`` event, so the client never stalls.
+    """
+    lock = _room_lock(room_id)
+    async with lock:
+        room = _ROOMS.setdefault(room_id, _build_idle_room(room_id, _scenario_from_room_id(room_id)))
+        normalized_mode = _normalize_agent_mode(agent_mode)
+
+        if normalized_mode == "scripted" or not _should_try_llm(normalized_mode):
+            _advance_room_state(room, agent_mode="scripted")
+            yield {"type": "done", "room": _serialize_room(room, active_user_id)}
+            return
+
+        before_message_count = len(room["messages"])
+        try:
+            patch: RoomPatch | None = None
+            async for event in stream_room_patch(deepcopy(room)):
+                if event["type"] == "reasoning":
+                    yield {"type": "reasoning", "delta": event["delta"]}
+                elif event["type"] == "patch":
+                    patch = event["patch"]
+            if patch is None:
+                raise LLMRoomAgentError("stream produced no patch")
+            _validate_room_patch(room, patch)
+            _advance_room_state(room, agent_mode="llm", refresh=False)
+            _apply_room_patch(room, patch, before_message_count)
+            _refresh_room(room, dynamic=True)
+            _bump_room_version(room)
+            room["agent_mode"] = "llm"
+        except Exception as exc:  # noqa: BLE001 - fall back to scripted on any failure
+            logger.warning("room_stream_fallback", room_id=room_id, reason=str(exc))
+            _advance_room_state(room, agent_mode="fallback")
+            room["agent_mode"] = "fallback"
+        yield {"type": "done", "room": _serialize_room(room, active_user_id)}
+
+
 def _advance_room_state(room: dict, agent_mode: str, refresh: bool = True) -> None:
     """Advance the deterministic state machine in place."""
     if room["scenario"] == "family":
@@ -94,28 +140,99 @@ def _advance_room_state(room: dict, agent_mode: str, refresh: bool = True) -> No
 
 def add_room_message(room_id: str, actor_id: str, content: str) -> dict:
     """Add a participant message and a deterministic Agent response."""
+    room = _resolve_message_room(room_id, content)
+    actor, was_idle = _ingest_user_message(room, actor_id, content)
+    room["messages"].append(_agent_message(room, _scripted_agent_reply(room, actor["id"], content, was_idle)))
+    _refresh_room(room)
+    return _serialize_room(room, actor["id"])
+
+
+async def add_room_message_stream(
+    room_id: str,
+    actor_id: str,
+    content: str,
+) -> AsyncGenerator[dict, None]:
+    """Add a user message, then stream the agent's visible reasoning and reply.
+
+    Commits the user message first (so it renders before the "thinking" bubble),
+    yields ``{"type": "reasoning", "delta": str}`` while the agent reasons, then a
+    final ``{"type": "done", "room": <serialized room>}``. Falls back to the
+    deterministic scripted reply when no LLM is configured or the LLM/patch fails,
+    so the turn always resolves with an agent reply.
+    """
+    lock = _room_lock(room_id)
+    async with lock:
+        room = _resolve_message_room(room_id, content)
+        actor, was_idle = _ingest_user_message(room, actor_id, content)
+        _bump_room_version(room)
+        before_message_count = len(room["messages"])
+
+        if not _should_try_llm("auto"):
+            _append_scripted_reply(room, actor["id"], content, was_idle, agent_mode="scripted")
+            yield {"type": "done", "room": _serialize_room(room, actor["id"])}
+            return
+
+        try:
+            patch: RoomPatch | None = None
+            async for event in stream_room_patch(deepcopy(room)):
+                if event["type"] == "reasoning":
+                    yield {"type": "reasoning", "delta": event["delta"]}
+                elif event["type"] == "patch":
+                    patch = event["patch"]
+            if patch is None or not any(draft.speaker_id == "agent" for draft in patch.messages):
+                raise LLMRoomAgentError("stream produced no agent reply")
+            _validate_room_patch(room, patch)
+            _apply_room_patch(room, patch, before_message_count)
+            _refresh_room(room, dynamic=True)
+            _bump_room_version(room)
+            room["agent_mode"] = "llm"
+        except Exception as exc:  # noqa: BLE001 - fall back to the scripted reply
+            logger.warning("room_message_stream_fallback", room_id=room_id, reason=str(exc))
+            room["messages"] = room["messages"][:before_message_count]
+            _append_scripted_reply(room, actor["id"], content, was_idle, agent_mode="fallback")
+        yield {"type": "done", "room": _serialize_room(room, actor["id"])}
+
+
+def _resolve_message_room(room_id: str, content: str) -> dict:
+    """Resolve (rebuilding on scenario switch while idle) the room for a message."""
     scenario = _scenario_from_text(content) or _scenario_from_room_id(room_id)
     room = _ROOMS.setdefault(room_id, _build_idle_room(room_id, scenario))
     if scenario != room["scenario"] and room["stage"] == "idle":
         room = _build_idle_room(room_id, scenario)
         _ROOMS[room_id] = room
+    return room
 
+
+def _ingest_user_message(room: dict, actor_id: str, content: str) -> tuple[dict, bool]:
+    """Append the user message and run the deterministic stage transition.
+
+    Returns ``(actor, was_idle)``. Does not append the agent reply, so callers can
+    either add the scripted reply or stream an LLM-generated one.
+    """
     actor = _participant(room, actor_id)
+    was_idle = room["stage"] == "idle"
     room["messages"].append(_message(room, actor, "user_message", content))
     _set_typing(room)
-
-    if room["stage"] == "idle":
+    if was_idle:
         room["stage"] = "agent_planning"
         room["stage_title"] = "正在理解大家想要什么"
         room["stage_description"] = _planning_description(room["scenario"])
-        room["demo_step_index"] = 2 if room["scenario"] == "friends" else 2
-        room["messages"].append(_agent_message(room, _agent_start_copy(room["scenario"])))
+        room["demo_step_index"] = 2
     else:
         _apply_text_preference(room, actor["id"], content)
-        room["messages"].append(_agent_message(room, _member_feedback_copy(room["scenario"], actor["id"], content)))
+    return actor, was_idle
 
+
+def _scripted_agent_reply(room: dict, actor_id: str, content: str, was_idle: bool) -> str:
+    if was_idle:
+        return _agent_start_copy(room["scenario"])
+    return _member_feedback_copy(room["scenario"], actor_id, content)
+
+
+def _append_scripted_reply(room: dict, actor_id: str, content: str, was_idle: bool, agent_mode: str) -> None:
+    room["messages"].append(_agent_message(room, _scripted_agent_reply(room, actor_id, content, was_idle)))
+    room["agent_mode"] = agent_mode
     _refresh_room(room)
-    return _serialize_room(room, actor["id"])
 
 
 def add_vote(room_id: str, participant_id: str, plan_id: str, reason: str = "") -> dict:
@@ -320,8 +437,7 @@ def _advance_friends(room: dict) -> None:
         room["messages"].append(
             _agent_message(
                 room,
-                "收到：不火锅、别太远、最好能聊天拍照。"
-                "我先给你们凑三个方向：体验好、折中稳、风险低。",
+                "收到：不火锅、别太远、最好能聊天拍照。我先给你们凑三个方向：体验好、折中稳、风险低。",
             )
         )
         room["stage"] = "opinions_collected"
@@ -422,9 +538,7 @@ def _advance_family(room: dict) -> None:
         room["stage_description"] = "正在生成主方案、早点回家方案和雨天备选。"
     elif step == 4:
         _ensure_plan_options(room)
-        room["messages"].append(
-            _agent_message(room, "我整理了 3 个家庭方向：玩得完整、早点回家、以及雨天室内备选。")
-        )
+        room["messages"].append(_agent_message(room, "我整理了 3 个家庭方向：玩得完整、早点回家、以及雨天室内备选。"))
         room["stage"] = "options_ready"
         room["stage_title"] = "家庭三方案已生成"
         room["stage_description"] = "默认推荐 B：保留亲子体验，同时更早结束。"
@@ -440,9 +554,7 @@ def _advance_family(room: dict) -> None:
         room["stage_description"] = "2/2 已支持 B 早点回家优先。"
     elif step == 6:
         room["reactions"] = _family_reactions()
-        room["messages"].append(
-            _agent_message(room, "我把清淡少油、儿童椅、少走路和早点回家都写进最终安排。")
-        )
+        room["messages"].append(_agent_message(room, "我把清淡少油、儿童椅、少走路和早点回家都写进最终安排。"))
         room["stage"] = "consensus_ready"
         room["stage_title"] = "家庭共识已形成"
         room["stage_description"] = "小明可以确认执行。"
@@ -964,8 +1076,7 @@ def _family_plan(title: str, summary: str, travel: int, fatigue: int, activities
             {"label": "户外长距离乐园", "reasons": ["步行和天气风险偏高"], "score": 58},
         ],
         "share_text": (
-            "家庭下午安排好了：先去室内亲子活动，5点左右吃清淡家庭餐，"
-            "儿童椅和少油已备注；孩子累了就直接回家。"
+            "家庭下午安排好了：先去室内亲子活动，5点左右吃清淡家庭餐，儿童椅和少油已备注；孩子累了就直接回家。"
         ),
         "route_geojson": _route_geojson(activities, travel),
     }
@@ -1416,10 +1527,17 @@ def _validate_room_patch(room: dict, patch: RoomPatch) -> None:
 def _apply_room_patch(room: dict, patch: RoomPatch, replace_messages_from: int) -> None:
     if patch.messages:
         room["messages"] = room["messages"][:replace_messages_from]
+        reasoning_attached = False
         for draft in patch.messages:
             participant = _participant(room, draft.speaker_id)
             message_type = "agent_message" if draft.speaker_id == "agent" else "user_message"
-            room["messages"].append(_message(room, participant, message_type, draft.text))
+            message = _message(room, participant, message_type, draft.text)
+            # Surface the model's genuine step reasoning on the agent message so
+            # the UI can offer a collapsible "思考过程" panel (default collapsed).
+            if draft.speaker_id == "agent" and patch.reasoning and not reasoning_attached:
+                message["reasoning"] = patch.reasoning
+                reasoning_attached = True
+            room["messages"].append(message)
 
     _merge_dynamic_memory(room, patch)
     if patch.plan_copy_updates:
