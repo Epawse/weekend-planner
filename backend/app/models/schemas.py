@@ -28,6 +28,44 @@ class PlanApproveRequest(BaseModel):
     modifications: dict | None = Field(default=None, description="Optional modification hints")
 
 
+class PlanFeedbackRequest(BaseModel):
+    """Request body for POST /api/plan/feedback."""
+
+    session_id: str = Field(..., description="Thread ID for current interrupted graph")
+    message: str = Field(..., description="User feedback text")
+    quick_action: str | None = Field(default=None, description="Optional quick action label")
+
+
+class RoomMessageRequest(BaseModel):
+    """Request body for POST /api/room/{room_id}/message."""
+
+    actor_id: str = Field(default="red", description="Participant id")
+    content: str = Field(..., description="Message content")
+
+
+class RoomVoteRequest(BaseModel):
+    """Request body for POST /api/room/{room_id}/vote."""
+
+    participant_id: str = Field(default="red", description="Participant id")
+    plan_id: str = Field(..., description="Target plan option id")
+    reason: str = Field(default="", description="Optional vote reason")
+
+
+class RoomReactionRequest(BaseModel):
+    """Request body for POST /api/room/{room_id}/reaction."""
+
+    participant_id: str = Field(default="red", description="Participant id")
+    venue_id: str = Field(..., description="Target venue id")
+    reaction_type: str = Field(default="like", description="Reaction type")
+    reason: str = Field(default="", description="Optional reaction reason")
+
+
+class RoomExecuteRequest(BaseModel):
+    """Request body for POST /api/room/{room_id}/execute."""
+
+    actor_id: str = Field(default="red", description="Participant id")
+
+
 class HealthResponse(BaseModel):
     """Response for GET /api/health."""
 

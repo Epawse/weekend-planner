@@ -8,9 +8,39 @@ interface ScenarioSelectorProps {
   selected: Scenario;
   onSelect: (scenario: Scenario) => void;
   disabled?: boolean;
+  compact?: boolean;
 }
 
-export function ScenarioSelector({ selected, onSelect, disabled = false }: ScenarioSelectorProps) {
+function getScenarioLabel(scenario: Scenario): string {
+  return scenario === "family" ? "家庭出游" : "朋友聚会";
+}
+
+export function ScenarioSelector({ selected, onSelect, disabled = false, compact = false }: ScenarioSelectorProps) {
+  if (compact) {
+    return (
+      <div className="flex items-center justify-between rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2">
+        <span className="text-xs font-medium text-zinc-600">当前场景：{getScenarioLabel(selected)}</span>
+        {!disabled && (
+          <div className="flex gap-1">
+            {(["family", "friends"] as const).map((scenario) => (
+              <button
+                key={scenario}
+                type="button"
+                onClick={() => onSelect(scenario)}
+                className={cn(
+                  "rounded-md px-2 py-1 text-xs transition-colors",
+                  selected === scenario ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-500 hover:text-zinc-700"
+                )}
+              >
+                {getScenarioLabel(scenario)}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="flex gap-3">
       <button

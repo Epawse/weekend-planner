@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef } from "react";
-import { streamPlanCreation, streamPlanApproval } from "@/lib/api";
+import { sendPlanFeedback, streamPlanCreation, streamPlanApproval } from "@/lib/api";
 import type {
   Plan,
   PlanEvent,
@@ -10,6 +10,7 @@ import type {
   PlanMapData,
   GeoJSONPolygon,
   SpatialVenue,
+  PlanCanvasState,
 } from "@/lib/types";
 
 interface ChatMessage {
@@ -23,10 +24,12 @@ interface UseChatReturn {
   messages: ChatMessage[];
   events: PlanEvent[];
   plan: Plan | null;
+  planCanvas: PlanCanvasState | null;
   status: PlanStatus;
   mapData: PlanMapData | null;
   sessionId: string | null;
   sendMessage: (message: string, scenario: Scenario, homeLocation: [number, number]) => Promise<void>;
+  sendFeedback: (message: string, quickAction?: string) => Promise<void>;
   approvePlan: (approved: boolean) => Promise<void>;
   reset: () => void;
 }
@@ -35,6 +38,7 @@ export function useChat(): UseChatReturn {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [events, setEvents] = useState<PlanEvent[]>([]);
   const [plan, setPlan] = useState<Plan | null>(null);
+  const [planCanvas, setPlanCanvas] = useState<PlanCanvasState | null>(null);
   const [status, setStatus] = useState<PlanStatus>("idle");
   const [mapData, setMapData] = useState<PlanMapData | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -58,6 +62,7 @@ export function useChat(): UseChatReturn {
       setStatus("planning");
       setEvents([]);
       setPlan(null);
+      setPlanCanvas(null);
       setMapData(null);
       setSessionId(null);
 
@@ -89,10 +94,30 @@ export function useChat(): UseChatReturn {
               setMessages((prev) => [...prev, assistantMsg]);
               break;
             }
+            case "family_profile":
+            case "family_strategy":
+            case "family_filter_result":
+            case "friend_profile":
+            case "friend_strategy":
+            case "friend_filter_result": {
+              const message = event.data.message as string | undefined;
+              if (message) {
+                const assistantMsg: ChatMessage = {
+                  id: crypto.randomUUID(),
+                  role: "assistant",
+                  content: message,
+                  timestamp: event.timestamp,
+                };
+                setMessages((prev) => [...prev, assistantMsg]);
+              }
+              break;
+            }
             case "plan_ready": {
               const readyPlan = event.data.plan as Plan | undefined;
+              const readyCanvas = event.data.plan_canvas as PlanCanvasState | undefined;
               if (readyPlan) {
                 setPlan(readyPlan);
+                setPlanCanvas(readyCanvas ?? null);
                 setStatus("plan_ready");
 
                 // Extract isochrone GeoJSON from event
@@ -101,26 +126,7 @@ export function useChat(): UseChatReturn {
                 // Extract spatial venues from event
                 const rawVenues = (event.data.venues as SpatialVenue[]) || [];
 
-                // Build route from plan activities' venue_coords
-                const routeCoords: number[][] = [homeLocation];
-                for (const activity of readyPlan.activities) {
-                  if (activity.venue_coords) {
-                    routeCoords.push(activity.venue_coords);
-                  }
-                }
-
-                const route = routeCoords.length > 1
-                  ? {
-                      type: "Feature" as const,
-                      geometry: {
-                        type: "LineString" as const,
-                        coordinates: routeCoords,
-                      },
-                      properties: {
-                        total_travel_minutes: readyPlan.total_travel_minutes,
-                      },
-                    }
-                  : null;
+                const route = readyPlan.route_geojson ?? buildSequenceRoute(readyPlan, homeLocation);
 
                 const newMapData: PlanMapData = {
                   isochrone,
@@ -213,10 +219,18 @@ export function useChat(): UseChatReturn {
             }
             case "all_complete": {
               setStatus("done");
+              const doneCanvas = event.data.plan_canvas as PlanCanvasState | undefined;
+              if (doneCanvas) {
+                setPlanCanvas(doneCanvas);
+              }
+              const tips = event.data.pre_departure_tips;
+              const tipText = Array.isArray(tips) && tips.length > 0
+                ? `\n\n行前提醒：\n${tips.map((tip) => `- ${String(tip)}`).join("\n")}`
+                : "";
               const doneMsg: ChatMessage = {
                 id: crypto.randomUUID(),
                 role: "assistant",
-                content: (event.data.summary as string) || "所有预订已完成！",
+                content: `${(event.data.summary as string) || "所有预订已完成！"}${tipText}`,
                 timestamp: event.timestamp,
               };
               setMessages((prev) => [...prev, doneMsg]);
@@ -237,11 +251,59 @@ export function useChat(): UseChatReturn {
     [sessionId]
   );
 
+  const sendFeedback = useCallback(
+    async (message: string, quickAction?: string) => {
+      if (!sessionId) return;
+
+      setStatus("planning");
+      try {
+        const response = await sendPlanFeedback({
+          session_id: sessionId,
+          message,
+          quick_action: quickAction ?? null,
+        });
+
+        setPlan(response.plan);
+        setPlanCanvas(response.plan_canvas);
+        setStatus("plan_ready");
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            role: "assistant",
+            content: response.message,
+            timestamp: new Date().toISOString(),
+          },
+        ]);
+
+        const route = response.plan.route_geojson ?? buildSequenceRoute(response.plan, homeLocationRef.current);
+        setMapData({
+          isochrone: mapData?.isochrone ?? null,
+          route,
+          venues: response.plan.activities,
+          spatialVenues: mapData?.spatialVenues ?? [],
+          home_location: homeLocationRef.current,
+        });
+      } catch (err) {
+        setStatus("error");
+        const errorMsg: ChatMessage = {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: `修改失败: ${err instanceof Error ? err.message : "未知错误"}`,
+          timestamp: new Date().toISOString(),
+        };
+        setMessages((prev) => [...prev, errorMsg]);
+      }
+    },
+    [mapData, sessionId]
+  );
+
   const reset = useCallback(() => {
     abortRef.current?.abort();
     setMessages([]);
     setEvents([]);
     setPlan(null);
+    setPlanCanvas(null);
     setStatus("idle");
     setMapData(null);
     setSessionId(null);
@@ -251,11 +313,36 @@ export function useChat(): UseChatReturn {
     messages,
     events,
     plan,
+    planCanvas,
     status,
     mapData,
     sessionId,
     sendMessage,
+    sendFeedback,
     approvePlan,
     reset,
+  };
+}
+
+function buildSequenceRoute(plan: Plan, homeLocation: [number, number]) {
+  const routeCoords: number[][] = [homeLocation];
+  for (const activity of plan.activities) {
+    if (activity.venue_coords) {
+      routeCoords.push(activity.venue_coords);
+    }
+  }
+
+  if (routeCoords.length <= 1) return null;
+
+  return {
+    type: "Feature" as const,
+    geometry: {
+      type: "LineString" as const,
+      coordinates: routeCoords,
+    },
+    properties: {
+      total_travel_minutes: plan.total_travel_minutes,
+      source: "sequence_estimate",
+    },
   };
 }

@@ -1,0 +1,8 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend verification entry point."}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Run and interpret pytest/ruff quality checks."}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Validate feedback and SSE error behavior."}
+{"file": ".trellis/spec/backend/plan-canvas-contract.md", "reason": "Verify PlanCanvasState contract and user-facing field rules."}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend verification entry point."}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Run and interpret lint/build/typecheck checks."}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Validate PlanCanvasState type contract and avoid unsafe assertions."}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Verify API payload survives backend-to-frontend boundaries."}

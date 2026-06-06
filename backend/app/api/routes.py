@@ -11,7 +11,26 @@ from sse_starlette.sse import EventSourceResponse
 
 from app.agents.orchestrator import planning_graph
 from app.config import settings
-from app.models.schemas import HealthResponse, PlanApproveRequest, PlanCreateRequest
+from app.models.schemas import (
+    HealthResponse,
+    PlanApproveRequest,
+    PlanCreateRequest,
+    PlanFeedbackRequest,
+    RoomExecuteRequest,
+    RoomMessageRequest,
+    RoomReactionRequest,
+    RoomVoteRequest,
+)
+from app.services.feedback import apply_feedback_to_state
+from app.services.room import (
+    add_reaction,
+    add_room_message,
+    add_vote,
+    execute_room,
+    get_room,
+    reset_room,
+    simulate_room,
+)
 
 logger = structlog.get_logger()
 
@@ -45,18 +64,30 @@ async def create_plan(request: PlanCreateRequest):
         "scenario": request.scenario,
         "home_location": list(request.home_location),
         "scenario_description": request.scenario_description,
+        "family_profile": None,
+        "family_strategy": None,
         "isochrone": None,
         "candidate_venues": [],
         "weather": None,
         "optimized_route": None,
+        "candidate_plans": [],
+        "family_checks": [],
+        "fatigue_score": None,
+        "evidence": [],
+        "alternatives": [],
+        "rejected_options": [],
         "messages": [],
         "plan": None,
         "plan_status": "idle",
         "current_step": 0,
         "execution_results": [],
+        "feedback_history": [],
+        "feedback_constraints": {},
+        "feedback_change_summary": None,
         "error": None,
         "retry_count": 0,
         "fallback_venues": [],
+        "plan_canvas": None,
     }
 
     async def event_generator() -> AsyncGenerator[dict, None]:
@@ -130,6 +161,36 @@ async def create_plan(request: PlanCreateRequest):
     )
 
 
+@router.post("/plan/feedback")
+async def feedback_plan(request: PlanFeedbackRequest):
+    """Apply follow-up feedback to the current interrupted plan."""
+    config = {"configurable": {"thread_id": request.session_id}}
+    snapshot = await planning_graph.aget_state(config)
+    state = dict(snapshot.values or {})
+
+    if not state.get("plan"):
+        raise HTTPException(status_code=400, detail="No current plan to modify for this session")
+
+    try:
+        update = apply_feedback_to_state(
+            state,
+            message=request.message,
+            quick_action=request.quick_action,
+            session_id=request.session_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    await planning_graph.aupdate_state(config, update)
+
+    return {
+        "session_id": request.session_id,
+        "message": update["feedback_message"],
+        "plan": update["plan"],
+        "plan_canvas": update["plan_canvas"],
+    }
+
+
 @router.post("/plan/approve")
 async def approve_plan(request: PlanApproveRequest):
     """Resume the planning graph after user approval/rejection.
@@ -192,3 +253,51 @@ async def approve_plan(request: PlanApproveRequest):
             "Cache-Control": "no-cache, no-transform",
         },
     )
+
+
+@router.get("/room/{room_id}")
+async def get_collaboration_room(room_id: str, user: str = "red"):
+    """Return the deterministic collaborative demo room."""
+    return get_room(room_id, active_user_id=user)
+
+
+@router.post("/room/{room_id}/reset")
+async def reset_collaboration_room(room_id: str, user: str = "red"):
+    """Reset the collaborative demo room to its baseline state."""
+    return reset_room(room_id, active_user_id=user)
+
+
+@router.post("/room/{room_id}/message")
+async def post_room_message(room_id: str, request: RoomMessageRequest):
+    """Add a participant message and update group memory."""
+    return add_room_message(room_id, actor_id=request.actor_id, content=request.content)
+
+
+@router.post("/room/{room_id}/vote")
+async def post_room_vote(room_id: str, request: RoomVoteRequest):
+    """Record a participant plan vote."""
+    return add_vote(room_id, participant_id=request.participant_id, plan_id=request.plan_id, reason=request.reason)
+
+
+@router.post("/room/{room_id}/reaction")
+async def post_room_reaction(room_id: str, request: RoomReactionRequest):
+    """Record a venue-level reaction."""
+    return add_reaction(
+        room_id,
+        participant_id=request.participant_id,
+        venue_id=request.venue_id,
+        reaction_type=request.reaction_type,
+        reason=request.reason,
+    )
+
+
+@router.post("/room/{room_id}/simulate")
+async def post_room_simulation(room_id: str, user: str = "red"):
+    """Apply the stable collaborative demo script."""
+    return simulate_room(room_id, active_user_id=user)
+
+
+@router.post("/room/{room_id}/execute")
+async def post_room_execute(room_id: str, request: RoomExecuteRequest):
+    """Execute the active collaborative plan if the host confirms."""
+    return execute_room(room_id, actor_id=request.actor_id)

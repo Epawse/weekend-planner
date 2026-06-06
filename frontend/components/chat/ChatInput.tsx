@@ -10,6 +10,7 @@ import type { Scenario } from "@/lib/types";
 interface ChatInputProps {
   onSubmit: (message: string, scenario: Scenario, homeLocation: [number, number]) => void;
   disabled?: boolean;
+  compactScenarioSelector?: boolean;
 }
 
 const DEFAULT_HOME_LOCATION: [number, number] = [116.481, 39.998];
@@ -20,7 +21,7 @@ const SUGGESTIONS = [
   "下午有空，想带家人去个亲子乐园，顺便吃顿饭",
 ];
 
-export function ChatInput({ onSubmit, disabled = false }: ChatInputProps) {
+export function ChatInput({ onSubmit, disabled = false, compactScenarioSelector = false }: ChatInputProps) {
   const [message, setMessage] = useState("");
   const [scenario, setScenario] = useState<Scenario>("family");
 
@@ -58,9 +59,14 @@ export function ChatInput({ onSubmit, disabled = false }: ChatInputProps) {
 
   return (
     <div className="space-y-4">
-      <ScenarioSelector selected={scenario} onSelect={setScenario} disabled={disabled} />
+      <ScenarioSelector
+        selected={scenario}
+        onSelect={setScenario}
+        disabled={disabled}
+        compact={compactScenarioSelector}
+      />
 
-      {!disabled && (
+      {!disabled && !compactScenarioSelector && (
         <div className="flex flex-wrap gap-2">
           {SUGGESTIONS.map((suggestion) => (
             <button

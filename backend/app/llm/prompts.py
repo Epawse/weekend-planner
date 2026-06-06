@@ -50,11 +50,15 @@ PLAN_OUTPUT_FORMAT = """请以以下JSON格式输出你的活动方案：
       "travel_to_next_minutes": 15,
       "action": "book|reserve|order_delivery|no_action",
       "action_details": {{}},
-      "reason": "推荐理由（结合场景约束）"
+      "reason": "推荐理由（必须基于候选方案和 evidence，不要创造新事实）",
+      "evidence_ids": ["ev_001"]
     }}
   ],
   "total_travel_minutes": 总通勤时间,
-  "share_text": "搞定了，下午X点出发，先去……然后……最后……"
+  "share_text": "搞定了，下午X点出发，先去……然后……最后……",
+  "family_summary": "如为家庭场景，总结孩子、饮食、路线、排队这些安心点",
+  "friend_summary": "如为朋友场景，总结4人桌、聊天、拍照、互动、路线、续摊这些适配点",
+  "pre_departure_tips": ["如为家庭场景，给出行前提醒"]
 }}
 ```
 
@@ -63,6 +67,9 @@ PLAN_OUTPUT_FORMAT = """请以以下JSON格式输出你的活动方案：
 - start_time 考虑前一个活动的 duration + travel_to_next
 - 最后一个活动的 travel_to_next_minutes 设为 null
 - share_text 简洁有趣，适合发朋友圈
+- 家庭场景下，所有“适合孩子/低脂/儿童椅/排队/余票”等事实必须来自 evidence_ids 引用的证据
+- 朋友场景下，所有“4人桌/适合聊天/适合拍照/排队短/可续摊”等事实必须来自 evidence_ids
+  引用的证据，share_text 要适合发微信群
 """
 
 SELECTION_SYSTEM_PROMPT = """你是一个本地生活活动规划助手。\

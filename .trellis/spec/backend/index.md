@@ -20,6 +20,8 @@ This directory contains guidelines for backend development. Fill in each file wi
 | [LLM Provider](./llm-provider.md) | Provider selection/fallback, env wiring, `DEFAULT_LLM_PROVIDER` gotcha | Done |
 | [Quality Guidelines](./quality-guidelines.md) | Python 3.11+, ruff, pytest, type hints | Done |
 | [Logging Guidelines](./logging-guidelines.md) | structlog, agent execution tracing | Done |
+| [Plan Canvas Contract](./plan-canvas-contract.md) | Cross-layer `plan_canvas` API/state contract | Done |
+| [Collaborative Room Contract](./collaborative-room-contract.md) | Mock multiplayer room shell around PlanCanvasState | Done |
 
 ---
 

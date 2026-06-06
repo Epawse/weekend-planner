@@ -1,4 +1,16 @@
-import type { PlanCreateRequest, PlanEvent, PlanApproveRequest, PlanEventType } from "./types";
+import type {
+  PlanApproveRequest,
+  PlanCreateRequest,
+  PlanEvent,
+  PlanEventType,
+  PlanFeedbackRequest,
+  PlanFeedbackResponse,
+  RoomExecuteRequest,
+  RoomMessageRequest,
+  RoomReactionRequest,
+  RoomState,
+  RoomVoteRequest,
+} from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 
@@ -88,6 +100,24 @@ export async function* streamPlanApproval(
   yield* parseSSEStream(response);
 }
 
+export async function sendPlanFeedback(
+  request: PlanFeedbackRequest
+): Promise<PlanFeedbackResponse> {
+  const response = await fetch(`${API_BASE}/api/plan/feedback`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(request),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Feedback failed: HTTP ${response.status}`);
+  }
+
+  return response.json() as Promise<PlanFeedbackResponse>;
+}
+
 export async function checkHealth(): Promise<{
   status: string;
   providers: Record<string, boolean>;
@@ -97,4 +127,66 @@ export async function checkHealth(): Promise<{
     throw new Error(`Health check failed: ${response.status}`);
   }
   return response.json();
+}
+
+async function parseRoomResponse(response: Response): Promise<RoomState> {
+  if (!response.ok) {
+    throw new Error(`Room request failed: HTTP ${response.status}`);
+  }
+  return response.json() as Promise<RoomState>;
+}
+
+export async function fetchRoom(roomId: string, userId: string): Promise<RoomState> {
+  const response = await fetch(`${API_BASE}/api/room/${roomId}?user=${encodeURIComponent(userId)}`);
+  return parseRoomResponse(response);
+}
+
+export async function resetRoom(roomId: string, userId: string): Promise<RoomState> {
+  const response = await fetch(`${API_BASE}/api/room/${roomId}/reset?user=${encodeURIComponent(userId)}`, {
+    method: "POST",
+  });
+  return parseRoomResponse(response);
+}
+
+export async function sendRoomMessage(roomId: string, request: RoomMessageRequest): Promise<RoomState> {
+  const response = await fetch(`${API_BASE}/api/room/${roomId}/message`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  return parseRoomResponse(response);
+}
+
+export async function sendRoomVote(roomId: string, request: RoomVoteRequest): Promise<RoomState> {
+  const response = await fetch(`${API_BASE}/api/room/${roomId}/vote`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  return parseRoomResponse(response);
+}
+
+export async function sendRoomReaction(roomId: string, request: RoomReactionRequest): Promise<RoomState> {
+  const response = await fetch(`${API_BASE}/api/room/${roomId}/reaction`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  return parseRoomResponse(response);
+}
+
+export async function simulateRoom(roomId: string, userId: string): Promise<RoomState> {
+  const response = await fetch(`${API_BASE}/api/room/${roomId}/simulate?user=${encodeURIComponent(userId)}`, {
+    method: "POST",
+  });
+  return parseRoomResponse(response);
+}
+
+export async function executeRoom(roomId: string, request: RoomExecuteRequest): Promise<RoomState> {
+  const response = await fetch(`${API_BASE}/api/room/${roomId}/execute`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  return parseRoomResponse(response);
 }

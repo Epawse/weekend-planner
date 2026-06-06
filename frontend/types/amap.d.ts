@@ -28,6 +28,7 @@ declare namespace AMap {
 
   class Marker {
     constructor(options?: MarkerOptions);
+    on(event: "click", handler: () => void): void;
   }
 
   interface MarkerOptions {

@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     # App Settings
     app_env: str = "development"
     log_level: str = "INFO"
+    showcase_mode: bool = False
     # Runtime provider selection is governed by LLMProviderFactory.get_provider_order()
     # / invoke_with_fallback() (the orchestrator's only LLM entry point). This value is
     # only consulted by get_model(provider=None); in the demo env Gemini is primary and

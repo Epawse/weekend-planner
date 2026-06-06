@@ -1,0 +1,20 @@
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "Backend modules for agents, services, tools, models, and API must follow existing layout."}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Family planning must use structured recoverable errors and graph-state routing."}
+{"file": ".trellis/spec/backend/llm-provider.md", "reason": "LLM changes must preserve provider fallback contract and single invoke_with_fallback entry point."}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Python typing, pytest, and service/API separation requirements."}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "New family scoring and fallback decisions should be structured logged."}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Showcase/mock data should stay lightweight and JSON/static where needed."}
+{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "Frontend family cards and state changes should stay in established component/hook layout."}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "New UI components must follow function component, Tailwind, and accessibility conventions."}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "Streaming state changes belong in useChat rather than page components."}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Backend remains source of truth; frontend displays streamed state without global stores."}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "New API response fields need explicit TypeScript types."}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Frontend lint/type quality bar for changed UI."}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Feature changes backend state, SSE API payloads, frontend types, and UI display."}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Avoid duplicating existing plan card, chat stream, tool, and spatial helper patterns."}
+{"file": "backend/app/services/family.py", "reason": "Second-round family quality gate, rhythm scheduling, diet risk, evidence binding."}
+{"file": "frontend/components/plan/FamilyAssuranceCard.tsx", "reason": "Risk-tiered family assurance display with folded evidence and fallback details."}
+{"file": "frontend/components/map/MapView.tsx", "reason": "Route-first map display with candidate POI toggle and weakened isochrone."}
+{"file": "backend/app/tools/poi_search.py", "reason": "AMap POI provenance fields: source, trust_level, typecode, tags."}
+{"file": "backend/app/services/spatial.py", "reason": "Propagate POI provenance and provide curated family fallback candidate."}
+{"file": "frontend/lib/types.ts", "reason": "Frontend contract for POI provenance and trust fields."}

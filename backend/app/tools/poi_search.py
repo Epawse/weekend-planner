@@ -49,6 +49,12 @@ async def search_venues(query: str, location: str, radius: int = 5000, types: st
         pois = []
         for poi in data.get("pois", []):
             lng, lat = poi.get("location", "0,0").split(",")
+            tags = poi.get("tag", [])
+            if not isinstance(tags, list):
+                tags = [tags] if tags else []
+            biz_type = poi.get("biz_type", [])
+            if not isinstance(biz_type, list):
+                biz_type = [biz_type] if biz_type else []
             pois.append(
                 {
                     "id": poi.get("id", ""),
@@ -56,10 +62,16 @@ async def search_venues(query: str, location: str, radius: int = 5000, types: st
                     "address": poi.get("address", ""),
                     "coords": [float(lng), float(lat)],
                     "category": poi.get("type", ""),
+                    "poi_type": poi.get("type", ""),
+                    "typecode": poi.get("typecode", ""),
+                    "tags": tags,
+                    "biz_type": biz_type,
                     "rating": float(poi["biz_ext"].get("rating", 0)) if poi.get("biz_ext") else None,
                     "distance": int(poi.get("distance", 0)),
                     "tel": poi.get("tel", ""),
                     "business_area": poi.get("business_area", ""),
+                    "source": "amap_real_poi",
+                    "trust_level": "real_api",
                 }
             )
 

@@ -1,0 +1,6 @@
+{"type":"spec","path":".trellis/spec/backend/directory-structure.md","note":"Backend service/model placement"}
+{"type":"spec","path":".trellis/spec/backend/database-guidelines.md","note":"Use in-memory room store for hackathon demo"}
+{"type":"spec","path":".trellis/spec/backend/plan-canvas-contract.md","note":"Room options wrap PlanCanvasState"}
+{"type":"spec","path":".trellis/spec/frontend/component-guidelines.md","note":"Component structure and accessibility"}
+{"type":"spec","path":".trellis/spec/frontend/state-management.md","note":"Use lightweight hook state, no global store"}
+{"type":"spec","path":".trellis/spec/frontend/type-safety.md","note":"Mirror backend room contract in lib/types.ts"}

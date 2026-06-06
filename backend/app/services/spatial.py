@@ -19,6 +19,7 @@ from itertools import permutations
 import structlog
 from shapely.geometry import Point, Polygon, shape
 
+from app.config import settings
 from app.tools.isochrone import get_reachable_area
 from app.tools.poi_search import search_venues
 from app.tools.routing import calculate_route
@@ -352,7 +353,8 @@ def _build_candidate_plan(
             {
                 "order": i + 1,
                 "type": activity_type,
-                "venue_name": venue.get("name", ""),
+                "venue_name": venue.get("display_name", venue.get("name", "")),
+                "display_name": venue.get("display_name", venue.get("name", "")),
                 "venue_address": venue.get("address", ""),
                 "venue_coords": venue["coords"],
                 "start_time": start_time,
@@ -361,6 +363,14 @@ def _build_candidate_plan(
                 "action": action,
                 "action_details": {},
                 "category": venue.get("category", ""),
+                "poi_type": venue.get("poi_type", venue.get("category", "")),
+                "typecode": venue.get("typecode", ""),
+                "tags": venue.get("tags", []),
+                "biz_type": venue.get("biz_type", []),
+                "source": venue.get("source", "amap_real_poi"),
+                "trust_level": venue.get("trust_level", "real_api"),
+                "venue_type": venue.get("venue_type", ""),
+                "scenario_tags": venue.get("scenario_tags", []),
                 "rating": venue.get("rating"),
                 "distance_from_home": round(_haversine_distance(home_coords, venue["coords"])),
             }
@@ -395,6 +405,7 @@ def _build_candidate_plan(
         },
         "properties": {
             "total_travel_minutes": total_travel,
+            "source": "sequence_estimate",
         },
     }
 
@@ -453,6 +464,10 @@ class SpatialAnalysisEngine:
         Returns:
             Dict with candidate plans, isochrone GeoJSON, and all venues.
         """
+        if settings.showcase_mode and scenario == "family":
+            logger.info("spatial_showcase_mode_enabled", scenario=scenario)
+            return _build_showcase_family_analysis(home_location)
+
         location_str = f"{home_location[0]},{home_location[1]}"
         time_budget_minutes = int(time_budget_hours * 60)
 
@@ -702,3 +717,215 @@ class SpatialAnalysisEngine:
         except Exception as e:
             logger.warning("real_route_fetch_failed", error=str(e))
             return None
+
+
+def _with_provenance(venue: dict, source: str, trust_level: str) -> dict:
+    enriched = dict(venue)
+    enriched["source"] = source
+    enriched["trust_level"] = trust_level
+    enriched.setdefault("poi_type", enriched.get("category", ""))
+    enriched.setdefault("typecode", "")
+    enriched.setdefault("tags", [])
+    enriched.setdefault("biz_type", [])
+    return enriched
+
+
+def _build_showcase_family_venues(home_location: list[float]) -> tuple[dict, dict, dict, dict, dict]:
+    """Return curated family demo venues with explicit provenance."""
+    base_lng, base_lat = home_location
+    science = _with_provenance(
+        {
+            "id": "show_play_science",
+            "name": "望京室内亲子科学馆",
+            "address": "望京SOHO附近亲子中心3层",
+            "coords": [base_lng + 0.010, base_lat + 0.004],
+            "category": "亲子科学馆;室内活动;儿童乐园",
+            "rating": 4.8,
+            "business_area": "望京",
+        },
+        "showcase_curated",
+        "curated_demo",
+    )
+    light_food = _with_provenance(
+        {
+            "id": "show_eat_light",
+            "name": "轻氧低脂家庭餐厅",
+            "address": "望京SOHO商业街B1",
+            "coords": [base_lng + 0.013, base_lat + 0.005],
+            "category": "轻食;沙拉;健康餐;家庭餐厅",
+            "rating": 4.6,
+            "business_area": "望京",
+        },
+        "showcase_curated",
+        "curated_demo",
+    )
+    bookstore = _with_provenance(
+        {
+            "id": "show_extra_bookstore",
+            "name": "亲子绘本书店",
+            "address": "望京商业中心2层",
+            "coords": [base_lng + 0.014, base_lat + 0.006],
+            "category": "书店;亲子阅读;商场",
+            "rating": 4.7,
+            "business_area": "望京",
+        },
+        "showcase_curated",
+        "curated_demo",
+    )
+    far_play = _with_provenance(
+        {
+            "id": "show_play_far",
+            "name": "跨区户外网红亲子乐园",
+            "address": "朝阳公园东侧",
+            "coords": [base_lng + 0.095, base_lat - 0.030],
+            "category": "户外乐园;网红;亲子",
+            "rating": 4.9,
+            "business_area": "朝阳公园",
+        },
+        "showcase_curated",
+        "curated_demo",
+    )
+    hotpot = _with_provenance(
+        {
+            "id": "show_eat_hotpot",
+            "name": "排队网红火锅",
+            "address": "热门商圈5层",
+            "coords": [base_lng + 0.100, base_lat - 0.028],
+            "category": "火锅;网红餐厅",
+            "rating": 4.9,
+            "business_area": "朝阳公园",
+        },
+        "showcase_curated",
+        "curated_demo",
+    )
+    return science, light_food, bookstore, far_play, hotpot
+
+
+def build_curated_family_candidate(home_location: list[float]) -> dict:
+    """Build a trusted curated family plan when live AMap has no qualified main activity."""
+    science, light_food, bookstore, _, _ = _build_showcase_family_venues(home_location)
+    plan = _build_candidate_plan(
+        {
+            "anchor": science,
+            "eat": light_food,
+            "extra": bookstore,
+            "venues": [science, light_food, bookstore],
+        },
+        home_location,
+    )
+    plan["id"] = "showcase_curated_family"
+    return plan
+
+
+def build_curated_friends_candidate(home_location: list[float]) -> dict:
+    """Build a trusted curated friends plan when live AMap has no qualified gathering route."""
+    base_lng, base_lat = home_location
+    interactive = _with_provenance(
+        {
+            "id": "show_friend_play_gallery",
+            "name": "望京艺文互动展",
+            "display_name": "望京艺文互动展",
+            "venue_type": "interactive_exhibition",
+            "scenario_tags": ["拍照", "互动", "展览", "朋友局"],
+            "address": "望京商业中心L3",
+            "coords": [base_lng + 0.011, base_lat + 0.004],
+            "category": "展览;手作;桌游;市集;艺术空间;互动体验;拍照",
+            "rating": 4.7,
+            "business_area": "望京",
+        },
+        "showcase_curated",
+        "curated_demo",
+    )
+    bistro = _with_provenance(
+        {
+            "id": "show_friend_eat_bistro",
+            "name": "合生麒麟社聚餐厅",
+            "display_name": "合生麒麟社聚餐厅",
+            "venue_type": "social_restaurant",
+            "scenario_tags": ["4人桌", "适合聊天", "聚餐", "氛围"],
+            "address": "合生麒麟社商业街2层",
+            "coords": [base_lng + 0.013, base_lat + 0.005],
+            "category": "氛围餐厅;西餐;小馆;朋友聚餐;适合聊天",
+            "rating": 4.6,
+            "business_area": "望京",
+        },
+        "showcase_curated",
+        "curated_demo",
+    )
+    lounge = _with_provenance(
+        {
+            "id": "show_friend_extra_lounge",
+            "name": "麒麟新天地清吧",
+            "display_name": "麒麟新天地清吧",
+            "venue_type": "after_dinner_bar",
+            "scenario_tags": ["咖啡", "清吧", "续摊", "可跳过"],
+            "address": "麒麟新天地1层",
+            "coords": [base_lng + 0.014, base_lat + 0.006],
+            "category": "清吧;咖啡;桌游;饭后续摊;聊天",
+            "rating": 4.5,
+            "business_area": "望京",
+        },
+        "showcase_curated",
+        "curated_demo",
+    )
+    plan = _build_candidate_plan(
+        {
+            "anchor": interactive,
+            "eat": bistro,
+            "extra": lounge,
+            "venues": [interactive, bistro, lounge],
+        },
+        home_location,
+    )
+    plan["id"] = "showcase_curated_friends"
+    return plan
+
+
+def _build_showcase_family_analysis(home_location: list[float]) -> dict:
+    """Return stable family demo data for showcase mode."""
+    science, light_food, bookstore, far_play, hotpot = _build_showcase_family_venues(home_location)
+    clusters = [
+        {
+            "anchor": science,
+            "eat": light_food,
+            "extra": bookstore,
+            "venues": [science, light_food, bookstore],
+        },
+        {
+            "anchor": far_play,
+            "eat": hotpot,
+            "extra": None,
+            "venues": [far_play, hotpot],
+        },
+    ]
+
+    candidates = []
+    for i, cluster in enumerate(clusters):
+        plan = _build_candidate_plan(cluster, home_location)
+        plan["id"] = f"showcase_{chr(97 + i)}"
+        candidates.append(plan)
+
+    all_venues = [science, light_food, bookstore, far_play, hotpot]
+    return {
+        "candidates": candidates,
+        "isochrone_geojson": _build_fallback_isochrone(home_location, radius_km=5.0),
+        "all_venues": all_venues,
+        "weather": {
+            "temperature": 24,
+            "feels_like": 24,
+            "condition": "多云",
+            "wind_direction": "东南风",
+            "wind_scale": "2",
+            "humidity": 48,
+            "summary": "多云，气温24°C，体感24°C，适合室内轻松活动",
+        },
+        "stats": {
+            "total_venues_found": len(all_venues),
+            "play_venues": 2,
+            "eat_venues": 2,
+            "extra_venues": 1,
+            "clusters_formed": len(clusters),
+            "valid_candidates": len(candidates),
+            "showcase_mode": True,
+        },
+    }

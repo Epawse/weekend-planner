@@ -1,0 +1,11 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend layer entry point for PlanCanvasState, feedback endpoint, and LangGraph contract changes."}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "Guides placement of new backend model/service files."}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Feedback and SSE changes must use structured recoverable errors and graph state patterns."}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Backend tests, ruff, and typing expectations."}
+{"file": ".trellis/spec/backend/plan-canvas-contract.md", "reason": "Defines the new cross-layer PlanCanvasState API/state contract."}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend layer entry point for workbench UI changes."}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Guides new canvas/evidence/map components."}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "PlanCanvasState must preserve backend as source of truth and avoid global state."}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "New frontend API/domain types need strict TypeScript contracts."}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "PlanCanvasState spans backend, API, hooks, and UI components."}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Avoid duplicating source-label, checks, and evidence mapping logic."}

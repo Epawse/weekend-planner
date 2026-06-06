@@ -1,0 +1,14 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "Place friends business logic in backend services and orchestrator nodes following existing layout."}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "New friend payload fields need explicit TypeScript types."}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Python service and tests must pass ruff and pytest."}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Friends quality gate must fallback instead of surfacing brittle failures."}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Backend remains source of truth; frontend only displays streamed friend payload."}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Friends assurance UI should follow existing Tailwind component patterns."}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Feature spans backend state, SSE payload, frontend hook, and UI types."}
+{"file": "frontend/components/plan/FriendAssuranceCard.tsx", "reason": "Frontend friends assurance display."}
+{"file": "backend/app/tools/availability.py", "reason": "Mock friends availability contract for 4-person table, chat, queue, and extension."}
+{"file": "backend/app/agents/orchestrator.py", "reason": "LangGraph friends_analysis node and friend evidence prompt integration."}
+{"file": "backend/app/services/friends.py", "reason": "Friends profile, strategy, quality gate, fallback, evidence-bound final plan."}
+{"file": "backend/app/services/spatial.py", "reason": "Curated friends fallback candidate."}
+{"file": "frontend/lib/types.ts", "reason": "Friend payload TypeScript contracts."}

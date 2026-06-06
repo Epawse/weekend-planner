@@ -3,6 +3,8 @@
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
 import { TimelineView } from "./TimelineView";
 import { ActionButton } from "./ActionButton";
+import { FamilyAssuranceCard } from "./FamilyAssuranceCard";
+import { FriendAssuranceCard } from "./FriendAssuranceCard";
 import { ShareButton } from "@/components/shared/ShareButton";
 import { Badge } from "@/components/ui/badge";
 import { formatDuration } from "@/lib/utils";
@@ -49,7 +51,9 @@ export function PlanCard({ plan, status, onApprove, onReject }: PlanCardProps) {
         </div>
       </CardHeader>
 
-      <CardContent className="pt-5">
+      <CardContent className="space-y-5 pt-5">
+        <FamilyAssuranceCard plan={plan} />
+        <FriendAssuranceCard plan={plan} />
         <TimelineView activities={plan.activities} />
       </CardContent>
 

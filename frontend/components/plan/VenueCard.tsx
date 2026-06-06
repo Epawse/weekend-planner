@@ -11,6 +11,9 @@ interface VenueCardProps {
 }
 
 export function VenueCard({ activity, isLast = false }: VenueCardProps) {
+  const displayName = activity.display_name || activity.venue_name;
+  const description = activity.user_description || activity.reason;
+
   return (
     <div className="relative flex gap-3">
       {/* Timeline dot and line */}
@@ -36,7 +39,7 @@ export function VenueCard({ activity, isLast = false }: VenueCardProps) {
           <div className="flex items-start justify-between gap-2">
             <div className="flex-1">
               <div className="flex items-center gap-2">
-                <h4 className="font-semibold text-zinc-900">{activity.venue_name}</h4>
+                <h4 className="font-semibold text-zinc-900">{displayName}</h4>
                 <Badge className={getActivityTypeColor(activity.type)} variant="outline">
                   {getActivityTypeLabel(activity.type)}
                 </Badge>
@@ -53,7 +56,7 @@ export function VenueCard({ activity, isLast = false }: VenueCardProps) {
                 </span>
               </div>
 
-              <p className="mt-2 text-sm text-zinc-600">{activity.reason}</p>
+              <p className="mt-2 text-sm text-zinc-600">{description}</p>
             </div>
           </div>
 

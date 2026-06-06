@@ -1,0 +1,7 @@
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Verify recoverable family feature/availability failures do not break the graph."}
+{"file": ".trellis/spec/backend/llm-provider.md", "reason": "Verify provider fallback tests and LLM contract remain intact."}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Run backend tests and keep typed service logic."}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Verify frontend API/event types cover new family payloads without any."}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Run frontend lint and check UI loading/error states."}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Verify family data survives backend → SSE → hook → UI round trip."}
+{"file": "backend/tests/test_tools/test_family_safety.py", "reason": "Regression coverage for strong child intent, duration, diet risk, and evidence-bound reasons."}
