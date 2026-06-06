@@ -21,6 +21,7 @@ interface UseRoomReturn {
   isLoading: boolean;
   isPlayingDemo: boolean;
   isAgentThinking: boolean;
+  isPreparingTurn: boolean;
   liveReasoning: string;
   error: string | null;
   reloadRoom: () => Promise<void>;
@@ -40,6 +41,7 @@ export function useRoom(roomId: string, userId: ParticipantId): UseRoomReturn {
   const [isLoading, setIsLoading] = useState(true);
   const [isPlayingDemo, setIsPlayingDemo] = useState(false);
   const [isAgentThinking, setIsAgentThinking] = useState(false);
+  const [isPreparingTurn, setIsPreparingTurn] = useState(false);
   const [liveReasoning, setLiveReasoning] = useState("");
   const [error, setError] = useState<string | null>(null);
 
@@ -188,36 +190,51 @@ export function useRoom(roomId: string, userId: ParticipantId): UseRoomReturn {
         if (latest?.stage === "final_plan_ready" || latest?.stage === "done") break;
         const actor = latest?.active_user_id ?? currentActorId;
         const prevRoom = latest;
-        setIsAgentThinking(true);
+        // One demo turn is a single LLM call that emits reasoning first, then the
+        // member + agent messages together at `done`. The member speech does not
+        // exist yet, so show a neutral "generating" indicator and silently buffer
+        // the reasoning — the agent "thinking" must not precede the members.
+        setIsPreparingTurn(true);
+        setIsAgentThinking(false);
         setLiveReasoning("");
+        let reasoningBuf = "";
         let nextRoom: RoomState | null = null;
         try {
-          // Real Gemini drives the demo (mode=auto), streaming its visible
-          // reasoning token-by-token while it thinks; the final event carries
-          // the updated room state.
+          // Real Gemini drives the demo (mode=auto); buffer its visible reasoning
+          // to replay after the members speak. The final event carries the room.
           for await (const event of streamAdvanceRoom(roomId, actor, "auto")) {
             if (event.type === "reasoning") {
-              setLiveReasoning((prev) => prev + event.delta);
+              reasoningBuf += event.delta;
             } else if (event.type === "done") {
               nextRoom = event.room;
             }
           }
         } catch {
           // Streaming unavailable — fall back to the non-streaming advance so the
-          // demo never stalls.
+          // demo never stalls (no buffered reasoning in this path).
           nextRoom = await advanceRoom(roomId, actor, "auto");
         }
         if (!nextRoom) {
+          setIsPreparingTurn(false);
           setIsAgentThinking(false);
           setLiveReasoning("");
           break;
         }
+        setIsPreparingTurn(false);
         // Reveal new member lines first: commit the room without the trailing
-        // agent reply so the members type out above the "thinking" bubble.
+        // agent reply so the members type out before the "thinking" bubble.
         const heldBack = roomWithoutTrailingAgent(prevRoom, nextRoom);
         if (heldBack) {
           setRoom(heldBack.room);
           await sleep(memberRevealMs(heldBack.newMemberCount));
+        }
+        // Now the members have spoken: show the agent "thinking" and replay the
+        // buffered reasoning so it streams in visibly after the member lines.
+        setIsAgentThinking(true);
+        if (reasoningBuf) {
+          await replayReasoning(reasoningBuf, setLiveReasoning);
+        } else {
+          await sleep(500);
         }
         // Then drop "thinking" and reveal the agent reply (its reasoning stays
         // visible in the message's own panel).
@@ -231,6 +248,7 @@ export function useRoom(roomId: string, userId: ParticipantId): UseRoomReturn {
       setError(err instanceof Error ? err.message : "演示播放失败");
     } finally {
       setIsPlayingDemo(false);
+      setIsPreparingTurn(false);
       setIsAgentThinking(false);
       setLiveReasoning("");
     }
@@ -249,6 +267,7 @@ export function useRoom(roomId: string, userId: ParticipantId): UseRoomReturn {
     isLoading,
     isPlayingDemo,
     isAgentThinking,
+    isPreparingTurn,
     liveReasoning,
     error,
     reloadRoom: reload,
@@ -316,4 +335,19 @@ function demoDelayMs(room: RoomState) {
     return 1400 + Math.floor(Math.random() * 900);
   }
   return 1200 + Math.floor(Math.random() * 700);
+}
+
+/**
+ * Replay buffered reasoning into `liveReasoning` so it appears to stream in after
+ * the member lines. The demo delivers reasoning + messages together at the
+ * stream's end, so this live reveal is reconstructed client-side. Reveals in ~8
+ * steps ~120ms apart (well under ~1300ms total); reuses `sleep` so no timers leak.
+ */
+async function replayReasoning(reasoning: string, setLiveReasoning: (value: string) => void) {
+  const chunk = Math.ceil(reasoning.length / 8);
+  for (let cut = chunk; cut < reasoning.length; cut += chunk) {
+    setLiveReasoning(reasoning.slice(0, cut));
+    await sleep(120);
+  }
+  setLiveReasoning(reasoning);
 }
