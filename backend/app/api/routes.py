@@ -27,7 +27,7 @@ from app.services.room import (
     add_reaction,
     add_room_message,
     add_vote,
-    advance_room,
+    advance_room_agentic,
     execute_room,
     get_room,
     reset_room,
@@ -301,9 +301,9 @@ async def post_room_reaction(room_id: str, request: RoomReactionRequest):
 
 
 @router.post("/room/{room_id}/advance")
-async def post_room_advance(room_id: str, user: str = "red"):
-    """Advance the staged collaborative demo by one visible event."""
-    return advance_room(room_id, active_user_id=user)
+async def post_room_advance(room_id: str, user: str = "red", mode: str = "auto"):
+    """Advance the collaborative room by one visible event."""
+    return await advance_room_agentic(room_id, active_user_id=user, agent_mode=mode)
 
 
 @router.post("/room/{room_id}/simulate")

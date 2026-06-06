@@ -1,0 +1,4 @@
+{"file":".trellis/spec/backend/collaborative-room-contract.md","reason":"Verify idle, advance, simulate, family, execution, and raw-token invariants still hold."}
+{"file":".trellis/spec/backend/llm-provider.md","reason":"Verify no-key and provider failure fallback behavior."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Run pytest and ruff for backend changes."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Run lint/type/build if frontend types are touched."}

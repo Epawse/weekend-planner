@@ -23,6 +23,7 @@ RoomStage = Literal[
 MessageType = Literal["user_message", "agent_message", "system_message"]
 VoteType = Literal["support", "oppose"]
 ReactionType = Literal["like", "neutral", "veto", "too_far", "too_noisy", "too_expensive", "food_exclusion"]
+AgentMode = Literal["scripted", "llm", "fallback"]
 
 
 class ParticipantProfile(BaseModel):
@@ -165,6 +166,8 @@ class RoomState(BaseModel):
     stage_description: str = ""
     typing_participants: list[ParticipantId] = Field(default_factory=list)
     demo_step_index: int = 0
+    room_version: int = 0
+    agent_mode: AgentMode = "scripted"
     host_user_id: ParticipantId
     active_user_id: ParticipantId
     participants: list[Participant]

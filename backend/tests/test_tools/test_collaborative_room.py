@@ -1,14 +1,30 @@
 """Tests for the staged mock collaborative room contract."""
 
+import asyncio
+
+import pytest
+
+from app.config import settings
+from app.services.llm_room_agent import LLMRoomAgentError, generate_room_patch
 from app.services.room import (
     add_reaction,
     add_vote,
     advance_room,
+    advance_room_agentic,
     execute_room,
     get_room,
     reset_room,
     set_room_scenario,
     simulate_room,
+)
+from app.services.room_agent_schemas import (
+    ConsensusPatch,
+    FinalCopyPatch,
+    MemoryDelta,
+    MessageDraft,
+    PlanCopyUpdate,
+    RoomPatch,
+    VenueSignalDraft,
 )
 
 FORBIDDEN_USER_TOKENS = [
@@ -23,6 +39,11 @@ FORBIDDEN_USER_TOKENS = [
 
 def _visible_text(value: object) -> str:
     return str(value)
+
+
+def _clear_llm_keys(monkeypatch) -> None:
+    for attr in ("dashscope_api_key", "gemini_api_key", "deepseek_api_key", "openai_api_key"):
+        monkeypatch.setattr(settings, attr, "")
 
 
 def test_reset_room_starts_idle_without_preloaded_script() -> None:
@@ -140,3 +161,155 @@ def test_get_room_normalizes_unknown_active_user() -> None:
     room = get_room("normalize_room", active_user_id="unknown")
 
     assert room["active_user_id"] == "red"
+
+
+def test_room_patch_rejects_extra_fields() -> None:
+    with pytest.raises(ValueError):
+        RoomPatch.model_validate({"next_phase_hint": "continue_chat", "unexpected": "field"})
+
+
+async def test_agentic_advance_without_llm_key_uses_scripted_fallback(monkeypatch) -> None:
+    _clear_llm_keys(monkeypatch)
+    reset_room("agentic_no_key_room", active_user_id="red")
+
+    room = await advance_room_agentic("agentic_no_key_room", active_user_id="red", agent_mode="auto")
+
+    assert room["stage"] == "host_prompted"
+    assert room["agent_mode"] == "scripted"
+    assert room["room_version"] == 1
+    assert room["messages"][0]["actor_id"] == "red"
+
+
+async def test_agentic_advance_applies_valid_room_patch(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "gemini_api_key", "g-key")
+    reset_room("agentic_valid_room", active_user_id="red")
+
+    async def fake_generate_room_patch(room):
+        return RoomPatch(
+            messages=[
+                MessageDraft(speaker_id="red", text="周末想轻松聚一下，别太远。"),
+                MessageDraft(speaker_id="agent", text="好，我先按近一点、能聊天、预算适中来收偏好。"),
+            ],
+            memory_delta=MemoryDelta(
+                constraints=["别太远"],
+                preferences=["预算适中", "适合聊天"],
+                decisions=["Agent 已开始动态收集群体偏好。"],
+            ),
+        )
+
+    monkeypatch.setattr("app.services.room.generate_room_patch", fake_generate_room_patch)
+
+    room = await advance_room_agentic("agentic_valid_room", active_user_id="red", agent_mode="llm")
+
+    assert room["stage"] == "host_prompted"
+    assert room["agent_mode"] == "llm"
+    assert [message["actor_id"] for message in room["messages"]] == ["red", "agent"]
+    assert "预算适中" in _visible_text(room["group_memory"])
+
+
+async def test_agentic_advance_invalid_speaker_falls_back_to_scripted(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "gemini_api_key", "g-key")
+    reset_room("agentic_invalid_room", active_user_id="red")
+
+    async def fake_generate_room_patch(room):
+        return RoomPatch(messages=[MessageDraft(speaker_id="wife", text="我不在这个朋友房间里。")])
+
+    monkeypatch.setattr("app.services.room.generate_room_patch", fake_generate_room_patch)
+
+    room = await advance_room_agentic("agentic_invalid_room", active_user_id="red", agent_mode="llm")
+
+    assert room["stage"] == "host_prompted"
+    assert room["agent_mode"] == "fallback"
+    assert room["messages"][0]["actor_id"] == "red"
+
+
+async def test_agentic_advance_invalid_venue_falls_back_to_scripted(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "gemini_api_key", "g-key")
+    reset_room("agentic_invalid_venue_room", active_user_id="red")
+
+    async def fake_generate_room_patch(room):
+        return RoomPatch(
+            venue_signals=[
+                VenueSignalDraft(
+                    participant_id="red",
+                    venue_id="venue_not_in_catalog",
+                    reaction_type="like",
+                    reason="不存在的地点",
+                )
+            ]
+        )
+
+    monkeypatch.setattr("app.services.room.generate_room_patch", fake_generate_room_patch)
+
+    room = await advance_room_agentic("agentic_invalid_venue_room", active_user_id="red", agent_mode="llm")
+
+    assert room["stage"] == "host_prompted"
+    assert room["agent_mode"] == "fallback"
+    assert room["reactions"] == []
+
+
+async def test_agentic_patch_updates_plan_copy_consensus_and_final_share(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "gemini_api_key", "g-key")
+    simulate_room("agentic_copy_room", active_user_id="red")
+
+    async def fake_generate_room_patch(room):
+        return RoomPatch(
+            plan_copy_updates={
+                "plan_b": PlanCopyUpdate(
+                    title="折中稳妥",
+                    positioning="路线集中，避开火锅，也保留拍照和咖啡。",
+                    risks=["咖啡仍为可选"],
+                    reason="最能照顾四个人的分歧。",
+                )
+            },
+            consensus=ConsensusPatch(
+                proposed_active_plan_id="plan_b",
+                consensus_summary="3/4 支持 B：避开火锅、路线集中，拍照和咖啡也都保留。",
+                minority_concerns=["小粉的拍照体验不是最强"],
+            ),
+            final_copy=FinalCopyPatch(
+                final_summary="最终用 B：路线近、避开火锅，饭后咖啡可选。",
+                share_text="朋友局安排好了：2点半先拍照互动，5点半吃轻聚餐，饭后咖啡可选。",
+            ),
+        )
+
+    monkeypatch.setattr("app.services.room.generate_room_patch", fake_generate_room_patch)
+
+    room = await advance_room_agentic("agentic_copy_room", active_user_id="red", agent_mode="llm")
+    active = next(option for option in room["plan_options"] if option["option_id"] == "plan_b")
+
+    assert room["agent_mode"] == "llm"
+    assert active["label"] == "B 折中稳妥"
+    assert active["positioning"] == "路线集中，避开火锅，也保留拍照和咖啡。"
+    assert room["consensus"]["summary"] == "3/4 支持 B：避开火锅、路线集中，拍照和咖啡也都保留。"
+    assert active["plan_canvas"]["summary"] == "最终用 B：路线近、避开火锅，饭后咖啡可选。"
+    assert active["plan_canvas"]["share_text"] == "朋友局安排好了：2点半先拍照互动，5点半吃轻聚餐，饭后咖啡可选。"
+    assert active["plan_canvas"]["map"]["markers"]
+
+
+async def test_agentic_concurrent_advance_is_serialized(monkeypatch) -> None:
+    _clear_llm_keys(monkeypatch)
+    reset_room("agentic_lock_room", active_user_id="red")
+
+    await asyncio.gather(
+        advance_room_agentic("agentic_lock_room", active_user_id="red", agent_mode="auto"),
+        advance_room_agentic("agentic_lock_room", active_user_id="red", agent_mode="auto"),
+    )
+
+    room = get_room("agentic_lock_room", active_user_id="red")
+    assert room["demo_step_index"] == 2
+    assert room["stage"] == "agent_planning"
+    assert len(room["messages"]) == 2
+
+
+async def test_generate_room_patch_invalid_json_raises(monkeypatch) -> None:
+    class FakeResponse:
+        content = "not-json"
+
+    async def fake_invoke_with_fallback(messages, temperature=0.7, tools=None):
+        return FakeResponse()
+
+    monkeypatch.setattr("app.services.llm_room_agent.llm_factory.invoke_with_fallback", fake_invoke_with_fallback)
+
+    with pytest.raises(LLMRoomAgentError):
+        await generate_room_patch(reset_room("invalid_json_room", active_user_id="red"))

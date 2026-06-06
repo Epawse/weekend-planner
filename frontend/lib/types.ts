@@ -367,6 +367,7 @@ export type RoomStage =
   | "done";
 export type RoomMessageType = "user_message" | "agent_message" | "system_message";
 export type RoomVoteType = "support" | "oppose";
+export type RoomAgentMode = "scripted" | "llm" | "fallback";
 export type RoomReactionType =
   | "like"
   | "neutral"
@@ -463,6 +464,9 @@ export interface PlanOption {
   vote_summary: PlanOptionVoteSummary;
   score: PlanOptionScore;
   is_recommended: boolean;
+  fit_for?: string[];
+  reason?: string;
+  agentic_risks?: string[];
 }
 
 export interface ConsensusState {
@@ -488,6 +492,8 @@ export interface RoomState {
   stage_description: string;
   typing_participants: ParticipantId[];
   demo_step_index: number;
+  room_version: number;
+  agent_mode: RoomAgentMode;
   host_user_id: ParticipantId;
   active_user_id: ParticipantId;
   participants: Participant[];

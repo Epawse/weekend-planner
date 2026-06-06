@@ -1,18 +1,27 @@
-"""Deterministic staged mock collaborative room service."""
+"""Deterministic staged mock collaborative room service with optional LLM RoomPatch."""
 
 from __future__ import annotations
 
+import asyncio
 from copy import deepcopy
 from datetime import datetime
 
+import structlog
+
+from app.llm.provider import llm_factory
 from app.services.canvas import build_plan_canvas
+from app.services.llm_room_agent import LLMRoomAgentError, generate_room_patch
+from app.services.room_agent_schemas import RoomPatch
 
 DEFAULT_ROOM_ID = "demo_friends_room"
 HOME_LOCATION = [116.481, 39.998]
 
 _ROOMS: dict[str, dict] = {}
+_ROOM_LOCKS: dict[str, asyncio.Lock] = {}
 _FRIENDS_FINAL_STEP = 10
 _FAMILY_FINAL_STEP = 8
+
+logger = structlog.get_logger()
 
 
 def get_room(room_id: str = DEFAULT_ROOM_ID, active_user_id: str = "red") -> dict:
@@ -36,12 +45,51 @@ def set_room_scenario(room_id: str, scenario: str, active_user_id: str = "red") 
 def advance_room(room_id: str = DEFAULT_ROOM_ID, active_user_id: str = "red") -> dict:
     """Advance one deterministic demo event."""
     room = _ROOMS.setdefault(room_id, _build_idle_room(room_id, _scenario_from_room_id(room_id)))
+    _advance_room_state(room, agent_mode="scripted")
+    return _serialize_room(room, active_user_id)
+
+
+async def advance_room_agentic(
+    room_id: str = DEFAULT_ROOM_ID,
+    active_user_id: str = "red",
+    agent_mode: str = "auto",
+) -> dict:
+    """Advance one room event, optionally enhancing the step with a validated LLM RoomPatch."""
+    lock = _room_lock(room_id)
+    async with lock:
+        room = _ROOMS.setdefault(room_id, _build_idle_room(room_id, _scenario_from_room_id(room_id)))
+        normalized_mode = _normalize_agent_mode(agent_mode)
+
+        if normalized_mode == "scripted" or not _should_try_llm(normalized_mode):
+            _advance_room_state(room, agent_mode="scripted")
+            return _serialize_room(room, active_user_id)
+
+        before_message_count = len(room["messages"])
+        try:
+            patch = await generate_room_patch(deepcopy(room))
+            _validate_room_patch(room, patch)
+            _advance_room_state(room, agent_mode="llm", refresh=False)
+            _apply_room_patch(room, patch, before_message_count)
+            _refresh_room(room, dynamic=True)
+            _bump_room_version(room)
+            room["agent_mode"] = "llm"
+        except Exception as exc:
+            logger.warning("room_agentic_fallback", room_id=room_id, reason=str(exc))
+            _advance_room_state(room, agent_mode="fallback")
+            room["agent_mode"] = "fallback"
+        return _serialize_room(room, active_user_id)
+
+
+def _advance_room_state(room: dict, agent_mode: str, refresh: bool = True) -> None:
+    """Advance the deterministic state machine in place."""
     if room["scenario"] == "family":
         _advance_family(room)
     else:
         _advance_friends(room)
-    _refresh_room(room)
-    return _serialize_room(room, active_user_id)
+    if refresh:
+        _refresh_room(room, dynamic=agent_mode == "llm")
+    room["agent_mode"] = agent_mode
+    _bump_room_version(room)
 
 
 def add_room_message(room_id: str, actor_id: str, content: str) -> dict:
@@ -197,6 +245,10 @@ def _build_idle_room(room_id: str, scenario: str) -> dict:
         "stage_description": "先输入一句想法，或点击自动演示动作。",
         "typing_participants": [],
         "demo_step_index": 0,
+        "room_version": 0,
+        "agent_mode": "scripted",
+        "dynamic_memory": _empty_dynamic_memory(),
+        "dynamic_consensus_summary": "",
         "host_user_id": "red",
         "active_user_id": "red",
         "participants": _participants(scenario),
@@ -1065,9 +1117,12 @@ def _evidence(activities: list[dict], scenario: str) -> list[dict]:
     return evidence
 
 
-def _refresh_room(room: dict) -> None:
+def _refresh_room(room: dict, dynamic: bool = False) -> None:
     _refresh_plan_votes(room)
-    room["group_memory"] = _group_memory(room)
+    if dynamic and room.get("dynamic_memory"):
+        room["group_memory"] = _dynamic_group_memory(room)
+    else:
+        room["group_memory"] = _group_memory(room)
     room["consensus"] = _consensus(room)
     _refresh_voting_evidence(room)
     if room["stage"] in {"final_plan_ready", "done"} and room["execution_state"]["status"] == "not_started":
@@ -1081,10 +1136,13 @@ def _refresh_room(room: dict) -> None:
 def _refresh_plan_votes(room: dict) -> None:
     for option in room["plan_options"]:
         supporters = [vote["participant_id"] for vote in room["votes"] if vote["target_id"] == option["option_id"]]
+        concerns = _dedupe_strings(
+            [*_option_concerns(option["option_id"], room["scenario"]), *option.get("agentic_risks", [])]
+        )
         option["vote_summary"] = {
             "supporters": supporters,
             "opponents": [],
-            "concerns": _option_concerns(option["option_id"], room["scenario"]),
+            "concerns": concerns[:4],
         }
         option["is_recommended"] = option["option_id"] == room["active_plan_id"]
 
@@ -1177,12 +1235,15 @@ def _consensus(room: dict) -> dict:
     total = 2 if room["scenario"] == "family" else 4
     status = "consensus_reached" if current >= required else "collecting"
     plan_name = "B 早点回家方案" if room["scenario"] == "family" else "B 折中方案"
+    dynamic_summary = str(room.get("dynamic_consensus_summary") or "").strip()
     return {
         "required_votes": required,
         "current_votes": current,
         "status": status,
         "active_plan_id": room["active_plan_id"],
-        "summary": f"{current}/{total} 已支持{plan_name}，{_host_name(room)}可以确认执行。"
+        "summary": dynamic_summary
+        if dynamic_summary
+        else f"{current}/{total} 已支持{plan_name}，{_host_name(room)}可以确认执行。"
         if status == "consensus_reached"
         else f"{current}/{total} 已投票，仍在收集偏好。",
     }
@@ -1190,6 +1251,46 @@ def _consensus(room: dict) -> dict:
 
 def _empty_group_memory() -> dict:
     return {"confirmed_constraints": [], "soft_preferences": [], "conflicts": [], "history": []}
+
+
+def _empty_dynamic_memory() -> dict:
+    return {"constraints": [], "preferences": [], "conflicts": [], "decisions": []}
+
+
+def _dynamic_group_memory(room: dict) -> dict:
+    dynamic_memory = room.get("dynamic_memory") or _empty_dynamic_memory()
+    base_memory = _group_memory(room)
+    confirmed_constraints = _dedupe_strings(
+        [*base_memory.get("confirmed_constraints", []), *dynamic_memory.get("constraints", [])]
+    )
+    soft_preferences = _dedupe_strings(
+        [*base_memory.get("soft_preferences", []), *dynamic_memory.get("preferences", [])]
+    )
+    conflict_items = [
+        *base_memory.get("conflicts", []),
+        *[
+            {
+                "topic": item,
+                "supporters": [],
+                "opponents": [],
+                "resolution": "已纳入当前协商，最终方案会按折中原则处理。",
+            }
+            for item in dynamic_memory.get("conflicts", [])
+        ],
+    ]
+    history = [
+        *base_memory.get("history", []),
+        *[
+            {"round": len(base_memory.get("history", [])) + index + 1, "summary": item}
+            for index, item in enumerate(dynamic_memory.get("decisions", []))
+        ],
+    ]
+    return {
+        "confirmed_constraints": confirmed_constraints[:8],
+        "soft_preferences": soft_preferences[:8],
+        "conflicts": conflict_items[:5],
+        "history": history[:6],
+    }
 
 
 def _empty_consensus() -> dict:
@@ -1270,6 +1371,224 @@ def _family_reactions() -> list[dict]:
     ]
 
 
+def _room_lock(room_id: str) -> asyncio.Lock:
+    lock = _ROOM_LOCKS.get(room_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        _ROOM_LOCKS[room_id] = lock
+    return lock
+
+
+def _normalize_agent_mode(agent_mode: str) -> str:
+    return agent_mode if agent_mode in {"auto", "scripted", "llm"} else "auto"
+
+
+def _should_try_llm(agent_mode: str) -> bool:
+    if agent_mode == "scripted":
+        return False
+    if agent_mode == "llm":
+        return True
+    return bool(llm_factory.get_provider_order())
+
+
+def _validate_room_patch(room: dict, patch: RoomPatch) -> None:
+    valid_speakers = _valid_speaker_ids(room)
+    for draft in patch.messages:
+        if draft.speaker_id not in valid_speakers:
+            raise LLMRoomAgentError(f"Invalid speaker for scenario: {draft.speaker_id}")
+
+    valid_plan_ids = _known_plan_ids(room) or {"plan_a", "plan_b", "plan_c"}
+    for plan_id in patch.plan_copy_updates:
+        if plan_id not in valid_plan_ids:
+            raise LLMRoomAgentError(f"Invalid plan id: {plan_id}")
+    if patch.consensus and patch.consensus.proposed_active_plan_id:
+        if patch.consensus.proposed_active_plan_id not in valid_plan_ids:
+            raise LLMRoomAgentError(f"Invalid proposed plan id: {patch.consensus.proposed_active_plan_id}")
+
+    valid_venue_ids = _known_venue_ids(room)
+    for signal in patch.venue_signals:
+        if signal.participant_id not in valid_speakers:
+            raise LLMRoomAgentError(f"Invalid venue signal speaker: {signal.participant_id}")
+        if signal.venue_id not in valid_venue_ids:
+            raise LLMRoomAgentError(f"Invalid venue id: {signal.venue_id}")
+
+
+def _apply_room_patch(room: dict, patch: RoomPatch, replace_messages_from: int) -> None:
+    if patch.messages:
+        room["messages"] = room["messages"][:replace_messages_from]
+        for draft in patch.messages:
+            participant = _participant(room, draft.speaker_id)
+            message_type = "agent_message" if draft.speaker_id == "agent" else "user_message"
+            room["messages"].append(_message(room, participant, message_type, draft.text))
+
+    _merge_dynamic_memory(room, patch)
+    if patch.plan_copy_updates:
+        _ensure_plan_options(room)
+        _apply_plan_copy_updates(room, patch)
+    if patch.venue_signals:
+        _apply_venue_signals(room, patch)
+    if patch.consensus:
+        _apply_consensus_patch(room, patch)
+    if patch.final_copy:
+        _apply_final_copy(room, patch)
+
+
+def _merge_dynamic_memory(room: dict, patch: RoomPatch) -> None:
+    memory = room.setdefault("dynamic_memory", _empty_dynamic_memory())
+    delta = patch.memory_delta
+    memory["constraints"] = _dedupe_strings([*memory.get("constraints", []), *delta.constraints])
+    memory["preferences"] = _dedupe_strings([*memory.get("preferences", []), *delta.preferences])
+    memory["conflicts"] = _dedupe_strings([*memory.get("conflicts", []), *delta.conflicts])
+    decisions = [*delta.decisions]
+    if patch.next_phase_hint in {"ready_to_plan", "consensus", "final_ready"}:
+        decisions.append(_phase_decision_text(patch.next_phase_hint))
+    memory["decisions"] = _dedupe_strings([*memory.get("decisions", []), *decisions])
+
+
+def _apply_plan_copy_updates(room: dict, patch: RoomPatch) -> None:
+    for option in room["plan_options"]:
+        update = patch.plan_copy_updates.get(option["option_id"])
+        if update is None:
+            continue
+        if update.title:
+            option["label"] = _prefixed_plan_label(option["option_id"], update.title)
+        if update.positioning or update.reason:
+            option["positioning"] = update.positioning or update.reason
+        if update.risks:
+            option["agentic_risks"] = update.risks
+        if update.fit_for:
+            option["fit_for"] = update.fit_for
+        if update.reason:
+            option["reason"] = update.reason
+
+
+def _apply_venue_signals(room: dict, patch: RoomPatch) -> None:
+    for signal in patch.venue_signals:
+        _append_reaction(room, signal.participant_id, signal.venue_id, signal.reaction_type, signal.reason)
+        _apply_reaction_preference(room, signal.participant_id, signal.venue_id, signal.reaction_type)
+
+
+def _apply_consensus_patch(room: dict, patch: RoomPatch) -> None:
+    consensus = patch.consensus
+    if consensus is None:
+        return
+    backend_plan_id = _backend_consensus_plan_id(room)
+    proposed_plan_id = consensus.proposed_active_plan_id
+    if proposed_plan_id and proposed_plan_id == backend_plan_id:
+        room["active_plan_id"] = proposed_plan_id
+    elif backend_plan_id:
+        room["active_plan_id"] = backend_plan_id
+    if consensus.consensus_summary:
+        room["dynamic_consensus_summary"] = consensus.consensus_summary
+    if consensus.minority_concerns and room["plan_options"]:
+        active = next((item for item in room["plan_options"] if item["option_id"] == room["active_plan_id"]), None)
+        if active:
+            active["vote_summary"]["concerns"] = _dedupe_strings(
+                [*active["vote_summary"].get("concerns", []), *consensus.minority_concerns]
+            )[:4]
+
+
+def _apply_final_copy(room: dict, patch: RoomPatch) -> None:
+    if not room["plan_options"] or not room["active_plan_id"]:
+        return
+    final_copy = patch.final_copy
+    if final_copy is None:
+        return
+    option = _active_option(room)
+    canvas = option["plan_canvas"]
+    if final_copy.final_summary:
+        canvas["summary"] = final_copy.final_summary
+    if final_copy.share_text:
+        canvas["share_text"] = final_copy.share_text
+    if final_copy.execution_notes:
+        room["execution_state"]["summary"] = "；".join(final_copy.execution_notes[:2])
+
+
+def _valid_speaker_ids(room: dict) -> set[str]:
+    return {participant["id"] for participant in room["participants"] if participant["role"] != "profile"}
+
+
+def _known_plan_ids(room: dict) -> set[str]:
+    return {option["option_id"] for option in room.get("plan_options", [])}
+
+
+def _known_venue_ids(room: dict) -> set[str]:
+    venue_ids = {
+        "venue_art",
+        "venue_hotpot",
+        "venue_handcraft",
+        "venue_light_dinner",
+        "venue_coffee",
+        "venue_bar",
+        "venue_boardgame",
+        "venue_mall_dinner",
+        "venue_family_science",
+        "venue_family_play",
+        "venue_family_light_dinner",
+        "venue_picture_book",
+        "venue_family_indoor",
+        "venue_family_mall_dinner",
+    }
+    for option in room.get("plan_options", []):
+        for item in option.get("plan_canvas", {}).get("timeline", []):
+            marker_id = str(item.get("map_marker_id", ""))
+            if marker_id:
+                venue_ids.add(marker_id)
+        for marker in option.get("plan_canvas", {}).get("map", {}).get("markers", []):
+            marker_id = str(marker.get("id", ""))
+            if marker_id:
+                venue_ids.add(marker_id)
+    return venue_ids
+
+
+def _backend_consensus_plan_id(room: dict) -> str:
+    counts: dict[str, int] = {}
+    for vote in room["votes"]:
+        counts[vote["target_id"]] = counts.get(vote["target_id"], 0) + 1
+    if counts:
+        top_plan_id = sorted(counts.items(), key=lambda item: (-item[1], item[0]))[0][0]
+    else:
+        top_plan_id = room.get("active_plan_id") or "plan_b"
+    hotpot_veto = any(
+        reaction["target_id"] == "venue_hotpot" and reaction["reaction_type"] in {"food_exclusion", "veto"}
+        for reaction in room["reactions"]
+    )
+    if top_plan_id == "plan_a" and hotpot_veto:
+        return "plan_b"
+    return top_plan_id
+
+
+def _prefixed_plan_label(option_id: str, title: str) -> str:
+    prefix = {"plan_a": "A", "plan_b": "B", "plan_c": "C"}.get(option_id, "")
+    if not prefix:
+        return title
+    return title if title.startswith(prefix) else f"{prefix} {title}"
+
+
+def _phase_decision_text(phase_hint: str) -> str:
+    return {
+        "ready_to_plan": "偏好已足够，进入三方案比较。",
+        "consensus": "投票和反馈已形成折中方向。",
+        "final_ready": "最终安排已可以确认执行。",
+    }.get(phase_hint, "继续收集成员偏好。")
+
+
+def _dedupe_strings(items: list[str]) -> list[str]:
+    seen = set()
+    result = []
+    for item in items:
+        text = " ".join(str(item).strip().split())
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        result.append(text)
+    return result
+
+
+def _bump_room_version(room: dict) -> None:
+    room["room_version"] = int(room.get("room_version", 0) or 0) + 1
+
+
 def _execution_results(canvas: dict, scenario: str) -> list[dict]:
     results = []
     party_size = 3 if scenario == "family" else 4
@@ -1330,6 +1649,8 @@ def _execution_results(canvas: dict, scenario: str) -> list[dict]:
 
 def _serialize_room(room: dict, active_user_id: str) -> dict:
     serialized = deepcopy(room)
+    serialized.pop("dynamic_memory", None)
+    serialized.pop("dynamic_consensus_summary", None)
     valid_ids = {participant["id"] for participant in serialized["participants"] if participant["role"] != "profile"}
     if active_user_id not in valid_ids:
         active_user_id = "red"

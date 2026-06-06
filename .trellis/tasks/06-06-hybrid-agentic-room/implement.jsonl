@@ -1,0 +1,5 @@
+{"file":".trellis/spec/backend/llm-provider.md","reason":"Hybrid Room must use existing invoke_with_fallback provider order and no-key behavior."}
+{"file":".trellis/spec/backend/collaborative-room-contract.md","reason":"RoomState contract, staged demo fallback, family/friends scenarios, and no raw token rules."}
+{"file":".trellis/spec/backend/plan-canvas-contract.md","reason":"LLM must not own PlanCanvasState; backend hydrates existing contract."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"LLM errors must fall back instead of breaking demo flow."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Feature touches API, backend service, frontend types, and tests."}

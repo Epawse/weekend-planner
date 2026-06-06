@@ -58,6 +58,15 @@ export function PlanOptionCards({
               <Score label="拍照" value={option.score.photo} />
             </div>
 
+            {(option.reason || option.fit_for?.length) && (
+              <div className="mt-3 rounded-md bg-orange-50 px-3 py-2 text-xs leading-5 text-orange-900">
+                {option.reason && <p>{option.reason}</p>}
+                {option.fit_for && option.fit_for.length > 0 && (
+                  <p className="mt-1 text-orange-700">适合：{option.fit_for.join(" / ")}</p>
+                )}
+              </div>
+            )}
+
             <div className="mt-3 flex items-center justify-between">
               <div className="flex gap-1">
                 {option.vote_summary.supporters.map((id) => (
