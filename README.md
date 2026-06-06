@@ -13,6 +13,23 @@ LangGraph Plan-and-Execute · 确定性空间分析引擎 · Gemini 推理（Dee
 
 ---
 
+## 🖼️ 界面预览
+
+> 「朋友周末聚会」场景：从一句话发起 → 多人协作收偏好 → A/B/C 投票 → 生成可执行行程单。
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/01-hero.png" alt="一句话发起" /><br/><sub><b>① 一句话发起</b> · 输入想法，或点「自动演示」让真实 LLM 驱动全程</sub></td>
+    <td width="50%"><img src="docs/screenshots/02-chat.png" alt="多人协作对话" /><br/><sub><b>② 多人协作对话</b> · 成员补充偏好，Agent 边想边收敛群体约束</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/03-plans.png" alt="A/B/C 方案对比" /><br/><sub><b>③ A/B/C 方案对比</b> · 投票、共识、群体记忆 + 可达地图</sub></td>
+    <td width="50%"><img src="docs/screenshots/04-final.png" alt="最终行程单" /><br/><sub><b>④ 最终行程单</b> · Plan Canvas 时间线 + 路线地图 + 一键执行</sub></td>
+  </tr>
+</table>
+
+---
+
 ## ✨ 功能特性
 
 - **🧭 Weekend Planner AI Mode**：面向家庭和朋友场景的本地生活计划与执行工作台。系统会将一句自然语言目标拆解为活动、餐饮、续摊、路线、可用性和执行动作多个子任务，结合真实地图工具、场景策略、演示业务接口和证据校验生成 Plan Canvas；用户可以继续反馈“近一点、换室内、不要火锅、早点回家”，系统会在当前计划上增量更新约束并重规划，确认后继续完成演示预约、订座、备注和分享。
@@ -209,7 +226,9 @@ pnpm dev
 | `POST` | `/api/room/{room_id}/reset` | 重置协作房间，可带 `?scenario=friends/family` |
 | `POST` | `/api/room/{room_id}/scenario` | 切换朋友 / 家庭协作场景并回到 idle |
 | `POST` | `/api/room/{room_id}/advance` | 推进一个可见演示事件：发起、typing、成员消息、三方案、投票、共识、最终方案 |
+| `POST` | `/api/room/{room_id}/advance/stream` | **SSE** 流式推送 Agent 可见推理（`reasoning` 增量），结束时下发完整房间状态 |
 | `POST` | `/api/room/{room_id}/message` | 添加成员消息并更新群体记忆 |
+| `POST` | `/api/room/{room_id}/message/stream` | **SSE** 先落用户消息，再流式推送 Agent 推理与回复；无 Key / 失败回退脚本回复 |
 | `POST` | `/api/room/{room_id}/vote` | 添加方案级投票 |
 | `POST` | `/api/room/{room_id}/reaction` | 添加地点级反应 |
 | `POST` | `/api/room/{room_id}/simulate` | 一次性执行稳定协作演示脚本到最终方案态 |
