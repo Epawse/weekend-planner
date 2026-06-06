@@ -38,3 +38,39 @@ Workspace check found a runaway stale 'next dev' server leaking 1201 postcss wor
 ### Next Steps
 
 - None - task complete
+
+
+## Session 2: Room thinking: stream ordering, member-first demo, unified bubble (+pnpm)
+
+**Date**: 2026-06-06
+**Task**: Room thinking: stream ordering, member-first demo, unified bubble (+pnpm)
+**Branch**: `fix/room-thinking-stream`
+
+### Summary
+
+Fixed the collaborative room 'thinking' UX: the member/user message now precedes the agent thinking bubble; interactive send routes through a new POST /room/{id}/message/stream SSE endpoint with genuine streamed reasoning + scripted fallback; the auto-demo shows a neutral 'generating' wait then replays reasoning after member lines; and the agent thinking + reply now share one persistent bubble (stable key) so it morphs in place. Also migrated the frontend to pnpm (Corepack packageManager pin, pnpm-lock, onlyBuiltDependencies for sharp/unrs-resolver) and added a dev.sh launcher. Backend 84 pytest + ruff clean; frontend tsc + eslint clean.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `19f36e2` | (see git log) |
+| `2be7865` | (see git log) |
+| `838534d` | (see git log) |
+| `b81f9e1` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
