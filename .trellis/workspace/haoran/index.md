@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 1
-- **Last Active**: 2026-06-04
+- **Total Sessions**: 2
+- **Last Active**: 2026-06-06
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~40 | Active |
+| `journal-1.md` | ~76 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 2 | 2026-06-06 | Room thinking: stream ordering, member-first demo, unified bubble (+pnpm) | `19f36e2`, `2be7865`, `838534d`, `b81f9e1` | `fix/room-thinking-stream` |
 | 1 | 2026-06-04 | Workspace triage + LLM config unification & backend tests | `5d2c2ab` | `main` |
 <!-- @@@/auto:session-history -->
 
