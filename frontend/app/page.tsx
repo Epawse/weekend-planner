@@ -9,8 +9,8 @@ import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
 import { Button } from "@/components/ui/button";
 import { useRoom } from "@/hooks/useRoom";
 import { cn } from "@/lib/utils";
-import { AlertTriangle, FileText, Map, MapPinned, RefreshCw } from "lucide-react";
-import type { ParticipantId, RoomReactionType, Scenario } from "@/lib/types";
+import { AlertTriangle, FileText, Map, RefreshCw } from "lucide-react";
+import type { ParticipantId, RoomActiveView, RoomReactionType, Scenario } from "@/lib/types";
 
 type RightTab = "map" | "sources";
 
@@ -32,6 +32,7 @@ export default function HomePage() {
   } = useRoom(roomId, userId);
 
   const [rightTab, setRightTab] = useState<RightTab>("map");
+  const [activeView, setActiveView] = useState<RoomActiveView>("chat");
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
   const [selectedTimelineId, setSelectedTimelineId] = useState<string | null>(null);
   const [selectedMarkerId, setSelectedMarkerId] = useState<string | null>(null);
@@ -50,6 +51,7 @@ export default function HomePage() {
   }, [room, selectedPlanId]);
 
   const activeCanvas = selectedOption?.plan_canvas ?? null;
+  const showRightPanel = Boolean(activeCanvas && activeView !== "chat");
   const effectiveTimelineId = selectedTimelineId ?? activeCanvas?.timeline[0]?.id ?? null;
   const effectiveMarkerId = selectedMarkerId ?? activeCanvas?.timeline[0]?.map_marker_id ?? null;
 
@@ -129,14 +131,31 @@ export default function HomePage() {
   }
 
   return (
-    <div className="grid h-full min-h-0 grid-cols-1 bg-zinc-100 lg:grid-cols-[320px_minmax(0,1fr)_420px] xl:grid-cols-[340px_minmax(0,1fr)_460px]">
+    <div
+      className={cn(
+        "grid h-full min-h-0 grid-cols-1 bg-zinc-100",
+        showRightPanel
+          ? "lg:grid-cols-[320px_minmax(0,1fr)_420px] xl:grid-cols-[340px_minmax(0,1fr)_460px]"
+          : "lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[340px_minmax(0,1fr)]"
+      )}
+    >
       <RoomSidebar
         room={room}
         activeUserId={room.active_user_id}
         isPlayingDemo={isPlayingDemo}
-        onPlayDemo={playDemo}
-        onReset={resetDemo}
+        onPlayDemo={() => {
+          setActiveView("chat");
+          void playDemo();
+        }}
+        onReset={(scenario) => {
+          setActiveView("chat");
+          setSelectedPlanId(null);
+          setSelectedTimelineId(null);
+          setSelectedMarkerId(null);
+          void resetDemo(scenario);
+        }}
         onScenarioChange={(scenario) => {
+          setActiveView("chat");
           setSelectedPlanId(null);
           setSelectedTimelineId(null);
           setSelectedMarkerId(null);
@@ -147,43 +166,48 @@ export default function HomePage() {
       <CollaborativeThread
         room={room}
         activeUserId={room.active_user_id}
+        activeView={activeView}
         selectedPlanId={selectedOption?.option_id ?? null}
         selectedTimelineId={effectiveTimelineId}
         isPlayingDemo={isPlayingDemo}
+        onViewChange={setActiveView}
         onSelectTimeline={handleSelectTimeline}
         onSelectPlan={handleSelectPlan}
         onVote={handleVote}
         onReact={handleReact}
         onSendMessage={sendMessage}
-        onPlayDemo={playDemo}
+        onPlayDemo={() => {
+          setActiveView("chat");
+          void playDemo();
+        }}
         onExecute={executeActivePlan}
       />
 
-      <aside className="hidden min-h-0 border-l border-zinc-200 bg-white lg:flex lg:flex-col">
-        <div className="flex border-b border-zinc-200 p-2">
-          {[
-            { id: "map" as const, label: "地图", icon: Map },
-            { id: "sources" as const, label: "来源", icon: FileText },
-          ].map((tab) => {
-            const Icon = tab.icon;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setRightTab(tab.id)}
-                className={cn(
-                  "flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium",
-                  rightTab === tab.id ? "bg-orange-50 text-orange-700" : "text-zinc-600 hover:bg-zinc-100"
-                )}
-              >
-                <Icon className="h-4 w-4" />
-                {tab.label}
-              </button>
-            );
-          })}
-        </div>
+      {showRightPanel && activeCanvas && (
+        <aside className="hidden min-h-0 border-l border-zinc-200 bg-white lg:flex lg:flex-col">
+          <div className="flex border-b border-zinc-200 p-2">
+            {[
+              { id: "map" as const, label: "地图", icon: Map },
+              { id: "sources" as const, label: "依据", icon: FileText },
+            ].map((tab) => {
+              const Icon = tab.icon;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setRightTab(tab.id)}
+                  className={cn(
+                    "flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium",
+                    rightTab === tab.id ? "bg-orange-50 text-orange-700" : "text-zinc-600 hover:bg-zinc-100"
+                  )}
+                >
+                  <Icon className="h-4 w-4" />
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
 
-        {activeCanvas && (
           <div className="border-b border-zinc-200 px-4 py-2 text-xs text-zinc-500">
             当前显示：
             <span className="font-medium text-zinc-800">
@@ -194,12 +218,9 @@ export default function HomePage() {
                 : selectedOption?.label}
             </span>
           </div>
-        )}
 
-        <div className="min-h-0 flex-1">
-          {!activeCanvas ? (
-            <RightPanelWaiting />
-          ) : rightTab === "map" ? (
+          <div className="min-h-0 flex-1">
+            {rightTab === "map" ? (
               <div className="h-full p-3">
                 <MapView
                   mapData={null}
@@ -209,16 +230,17 @@ export default function HomePage() {
                   className="h-full w-full"
                 />
               </div>
-          ) : (
-            <EvidencePanel
-              evidence={activeCanvas.evidence_cards}
-              rejectedOptions={activeCanvas.rejected_options}
-              selectedTimelineId={effectiveTimelineId}
-              onSelectEvidence={handleSelectEvidence}
-            />
-          )}
-        </div>
-      </aside>
+            ) : (
+              <EvidencePanel
+                evidence={activeCanvas.evidence_cards}
+                rejectedOptions={activeCanvas.rejected_options}
+                selectedTimelineId={effectiveTimelineId}
+                onSelectEvidence={handleSelectEvidence}
+              />
+            )}
+          </div>
+        </aside>
+      )}
     </div>
   );
 }
@@ -244,18 +266,4 @@ function initialRouteState(): { roomId: string; userId: ParticipantId } {
     roomId: params.get("room") || (scenario === "family" ? "demo_family_room" : "demo_friends_room"),
     userId: normalizeUser(params.get("user")),
   };
-}
-
-function RightPanelWaiting() {
-  return (
-    <div className="flex h-full items-center justify-center p-8 text-center">
-      <div>
-        <MapPinned className="mx-auto h-8 w-8 text-zinc-300" />
-        <div className="mt-3 text-sm font-semibold text-zinc-800">地图等待方案生成</div>
-        <p className="mt-2 text-xs leading-5 text-zinc-500">
-          发起需求或点击自动演示后，右侧会跟随 A/B/C 或最终方案切换路线、地点卡和来源证据。
-        </p>
-      </div>
-    </div>
-  );
 }

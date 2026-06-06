@@ -58,7 +58,7 @@ def add_room_message(room_id: str, actor_id: str, content: str) -> dict:
 
     if room["stage"] == "idle":
         room["stage"] = "agent_planning"
-        room["stage_title"] = "Agent 正在拆解需求"
+        room["stage_title"] = "正在理解大家想要什么"
         room["stage_description"] = _planning_description(room["scenario"])
         room["demo_step_index"] = 2 if room["scenario"] == "friends" else 2
         room["messages"].append(_agent_message(room, _agent_start_copy(room["scenario"])))
@@ -224,14 +224,14 @@ def _advance_friends(room: dict) -> None:
         )
         room["stage"] = "host_prompted"
         room["stage_title"] = "小红已发起朋友局"
-        room["stage_description"] = "Agent 将先拆解活动、晚餐、续摊、路线和可用性。"
+        room["stage_description"] = "我会先帮大家收偏好，再给出几个能落地的方向。"
     elif step == 1:
         room["messages"].append(
-            _agent_message(room, "我会先拆成活动、4人桌餐厅、续摊、路线和排队余位几个子任务，随后邀请大家补充偏好。")
+            _agent_message(room, "好，我先帮你们收一下偏好：想吃什么、不想去哪、几点前回家、预算大概多少。")
         )
         room["stage"] = "agent_planning"
-        room["stage_title"] = "Agent 正在拆解任务"
-        room["stage_description"] = "本地生活 fan-out 已启动。"
+        room["stage_title"] = "正在找合适的方向"
+        room["stage_description"] = "先看附近能玩、能吃、能聊天的组合。"
     elif step == 2:
         room["messages"].append(_agent_message(room, "已邀请小绿、小蓝、小粉进入房间。先收集偏好，再给大家 3 个方向。"))
         room["stage"] = "members_invited"
@@ -268,8 +268,8 @@ def _advance_friends(room: dict) -> None:
         room["messages"].append(
             _agent_message(
                 room,
-                "我已汇总大家的偏好：小红要近，小绿要室内安静，"
-                "小蓝不要火锅且想早点回，小粉要拍照和咖啡。接下来先给 3 个方向。",
+                "收到：不火锅、别太远、最好能聊天拍照。"
+                "我先给你们凑三个方向：体验好、折中稳、风险低。",
             )
         )
         room["stage"] = "opinions_collected"
@@ -278,11 +278,11 @@ def _advance_friends(room: dict) -> None:
     elif step == 6:
         _ensure_plan_options(room)
         room["messages"].append(
-            _agent_message(room, "第 1 步：我生成了 A 体验优先、B 折中推荐、C 稳妥备选。大家先看方向，再投票。")
+            _agent_message(room, "我找到了 3 个方向：体验更丰富、折中更稳、以及天气不好也能用的备选。")
         )
         room["stage"] = "options_ready"
         room["stage_title"] = "三套方案已生成"
-        room["stage_description"] = "点击方案可切换右侧地图和来源。"
+        room["stage_description"] = "可以先看方案，再投票或说不喜欢哪里。"
     elif step == 7:
         room["votes"] = [
             _vote("red", "plan_a", "体验最好"),
@@ -291,7 +291,9 @@ def _advance_friends(room: dict) -> None:
             _vote("pink", "plan_b", "保留拍照和咖啡"),
         ]
         room["active_plan_id"] = "plan_b"
-        room["messages"].append(_agent_message(room, "第 2 步：B 折中推荐获得 3/4 支持，同时避开小蓝反对的火锅。"))
+        room["messages"].append(
+            _agent_message(room, "B 目前支持最多，也避开了小蓝不想吃的火锅。我建议用它做最终安排。")
+        )
         room["stage"] = "voting"
         room["stage_title"] = "投票中"
         room["stage_description"] = "折中方案正在形成共识。"
@@ -300,7 +302,7 @@ def _advance_friends(room: dict) -> None:
         room["messages"].append(
             _agent_message(
                 room,
-                "第 3 步：我把地点反应转成约束，保留小粉喜欢的艺文互动展，把火锅换成轻聚餐厅，咖啡设为可选。",
+                "我会保留小粉喜欢的艺文互动展，把火锅换成轻聚餐厅；饭后咖啡保留为可选，不强制大家都去。",
             )
         )
         room["stage"] = "consensus_ready"
@@ -338,12 +340,12 @@ def _advance_family(room: dict) -> None:
         )
         room["stage"] = "host_prompted"
         room["stage_title"] = "小明已发起家庭出游"
-        room["stage_description"] = "Agent 将优先考虑孩子年龄、少走路、少排队和清淡用餐。"
+        room["stage_description"] = "我会先把孩子、晚餐和回家时间放在一起考虑。"
     elif step == 1:
         room["messages"].append(_agent_message(room, _agent_start_copy("family")))
         room["stage"] = "agent_planning"
-        room["stage_title"] = "Agent 正在拆解家庭约束"
-        room["stage_description"] = "亲子活动、清淡餐、儿童椅、路线疲劳度同步校验。"
+        room["stage_title"] = "正在理解家庭约束"
+        room["stage_description"] = "先排除太远、太累和油烟重的地方。"
     elif step == 2:
         room["messages"].append(
             _agent_message(room, "已把方案发给老婆确认。孩子作为 5 岁亲子画像约束，不需要单独投票。")
@@ -369,7 +371,7 @@ def _advance_family(room: dict) -> None:
     elif step == 4:
         _ensure_plan_options(room)
         room["messages"].append(
-            _agent_message(room, "第 1 步：我生成了 A 亲子体验优先、B 早点回家优先、C 雨天室内备选。")
+            _agent_message(room, "我整理了 3 个家庭方向：玩得完整、早点回家、以及雨天室内备选。")
         )
         room["stage"] = "options_ready"
         room["stage_title"] = "家庭三方案已生成"
@@ -380,14 +382,14 @@ def _advance_family(room: dict) -> None:
             _vote("wife", "plan_b", "清淡少油，也能早点回"),
         ]
         room["active_plan_id"] = "plan_b"
-        room["messages"].append(_agent_message(room, "第 2 步：小明和老婆都支持 B，孩子约束也满足，因此进入家庭共识。"))
+        room["messages"].append(_agent_message(room, "小明和老婆都更适合 B：孩子能玩，晚餐清淡，也能早点回。"))
         room["stage"] = "voting"
         room["stage_title"] = "家庭确认中"
         room["stage_description"] = "2/2 已支持 B 早点回家优先。"
     elif step == 6:
         room["reactions"] = _family_reactions()
         room["messages"].append(
-            _agent_message(room, "第 3 步：我把清淡少油、儿童椅、少走路和早点回家写入最终方案与执行备注。")
+            _agent_message(room, "我把清淡少油、儿童椅、少走路和早点回家都写进最终安排。")
         )
         room["stage"] = "consensus_ready"
         room["stage_title"] = "家庭共识已形成"
@@ -1113,14 +1115,14 @@ def _group_memory(room: dict) -> dict:
                 "confirmed_constraints": ["孩子5岁", "别太远"],
                 "soft_preferences": ["亲子适配", "少走路"],
                 "conflicts": [],
-                "history": [{"round": 1, "summary": "小明发起家庭出游，Agent 正在拆解约束。"}],
+                "history": [{"round": 1, "summary": "小明发起家庭出游，AI 正在理解家庭偏好。"}],
             }
         if room["messages"]:
             return {
                 "confirmed_constraints": ["4人朋友局", "别太远"],
                 "soft_preferences": ["吃点好的", "有吃有玩"],
                 "conflicts": [],
-                "history": [{"round": 1, "summary": "小红发起朋友聚会，Agent 正在拆解任务。"}],
+                "history": [{"round": 1, "summary": "小红发起朋友聚会，AI 正在理解大家偏好。"}],
             }
         return _empty_group_memory()
     if room["scenario"] == "family":
@@ -1504,8 +1506,8 @@ def _host_name(room: dict) -> str:
 
 def _planning_description(scenario: str) -> str:
     if scenario == "family":
-        return "亲子活动、清淡餐、儿童椅、路线疲劳度同步校验。"
-    return "活动、餐厅、续摊、路线、排队余位同步校验。"
+        return "正在找适合孩子、少走路、晚餐清淡的组合。"
+    return "正在找附近适合聊天、吃饭和拍照的组合。"
 
 
 def _agent_start_copy(scenario: str) -> str:
@@ -1517,15 +1519,15 @@ def _agent_start_copy(scenario: str) -> str:
 def _member_feedback_copy(scenario: str, actor_id: str, content: str) -> str:
     if scenario == "family":
         if actor_id == "wife":
-            return "根据老婆的反馈，我已把晚餐改成清淡少油优先，并把儿童椅、靠边座位和早点回家写入执行备注。"
-        return "我已把这条反馈加入家庭约束，继续保持孩子适配、少走路和清淡用餐。"
+            return "明白，我会把晚餐放在清淡少油优先，并提前备注儿童椅、靠边座位和早点回家。"
+        return "收到，我会继续按孩子不累、少走路和晚餐清淡来安排。"
     if actor_id == "blue" or "火锅" in content:
         return "根据小蓝的“不要火锅”，我已排除火锅，只替换晚餐候选，活动和咖啡不受影响。"
     if actor_id == "green" or "室内" in content:
         return "根据小绿的室内偏好，我会优先保留室内活动，并降低户外地点权重。"
     if actor_id == "pink" or "拍照" in content:
         return "根据小粉的拍照和咖啡偏好，我会保留艺文互动展，并把饭后咖啡设为可选收尾。"
-    return "我已把这条反馈加入当前群体约束，并会在现有计划上增量调整。"
+    return "收到，我会在当前方案上继续调整，不会从头推翻大家已经认可的部分。"
 
 
 def _ready_summary(room: dict) -> str:

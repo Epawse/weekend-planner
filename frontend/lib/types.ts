@@ -351,6 +351,7 @@ export interface PlanFeedbackResponse {
 }
 
 export type ParticipantId = "red" | "green" | "blue" | "pink" | "wife" | "child" | "agent";
+export type RoomActiveView = "chat" | "plans" | "final";
 export type RoomStage =
   | "idle"
   | "host_prompted"

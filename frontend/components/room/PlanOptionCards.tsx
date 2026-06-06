@@ -45,6 +45,13 @@ export function PlanOptionCards({
             </div>
 
             <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+              <Fact label="总时长" value={option.plan_canvas.metrics.total_duration_text} />
+              <Fact label="通勤" value={option.plan_canvas.metrics.travel_time_text} />
+              <Fact label="人均" value={budgetText(option.score.budget)} />
+              <Fact label="提醒" value={option.vote_summary.concerns[0] ?? "风险可控"} />
+            </div>
+
+            <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
               <Score label="共识" value={option.score.consensus} />
               <Score label="距离" value={option.score.distance} />
               <Score label="室内" value={option.score.indoor} />
@@ -59,7 +66,7 @@ export function PlanOptionCards({
               </div>
               <div className="flex gap-2">
                 <Button type="button" size="sm" variant="outline" onClick={() => onSelectPlan(option.option_id)}>
-                  查看
+                  查看详情
                 </Button>
                 <Button type="button" size="sm" disabled={hasVoted} onClick={() => onVote(option.option_id)}>
                   {hasVoted ? "已投" : "投票"}
@@ -91,6 +98,21 @@ function Score({ label, value }: { label: string; value: number }) {
       </div>
     </div>
   );
+}
+
+function Fact({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md bg-zinc-50 px-2 py-1.5">
+      <div className="text-zinc-400">{label}</div>
+      <div className="mt-0.5 truncate font-medium text-zinc-800">{value}</div>
+    </div>
+  );
+}
+
+function budgetText(value: number) {
+  if (value >= 88) return "约¥100-150";
+  if (value >= 80) return "约¥120-180";
+  return "约¥160-220";
 }
 
 function scoreWidthClass(value: number) {

@@ -149,7 +149,7 @@ export function useRoom(roomId: string, userId: ParticipantId): UseRoomReturn {
         const nextRoom = await advanceRoom(roomId, latest?.active_user_id ?? currentActorId);
         setRoom(nextRoom);
         latest = nextRoom;
-        await sleep(nextRoom.typing_participants.length > 0 ? 900 : 650);
+        await sleep(demoDelayMs(nextRoom));
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "演示播放失败");
@@ -188,4 +188,14 @@ function sleep(ms: number) {
   return new Promise((resolve) => {
     window.setTimeout(resolve, ms);
   });
+}
+
+function demoDelayMs(room: RoomState) {
+  if (room.typing_participants.length > 0) {
+    return 1800 + Math.floor(Math.random() * 1700);
+  }
+  if (room.stage === "agent_planning" || room.stage === "opinions_collected") {
+    return 1400 + Math.floor(Math.random() * 900);
+  }
+  return 1200 + Math.floor(Math.random() * 700);
 }
