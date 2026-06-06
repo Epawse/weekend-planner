@@ -1,0 +1,5 @@
+{"file":".trellis/spec/backend/collaborative-room-contract.md","reason":"Verify idle/advance/message/simulate invariants and raw-token rules still hold after the stream route."}
+{"file":".trellis/spec/backend/llm-provider.md","reason":"Verify no-key/provider-failure fallback for the streaming message path."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Run pytest + ruff for backend changes."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Run tsc --noEmit and next lint for the hook/component/api changes."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Optimistic message + stream events must stay strictly typed, no any."}

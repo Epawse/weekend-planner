@@ -35,8 +35,20 @@ Python 3.11+. All code must pass type checking and linting before commit.
 
 - Formatter: `ruff format`
 - Linter: `ruff check`
-- Line length: 120
+- Line length: 120 — **ruff measures display width, so CJK/full-width chars count as 2.**
+  A Chinese line ≤120 code points can still trip `E501`. For long prompt strings,
+  wrap content-preservingly: adjacent string literals, or a `\` line-continuation
+  inside triple-quoted strings (removes the newline, keeps the string identical).
 - Import sorting: isort-compatible (handled by ruff)
+
+## Running Checks
+
+Dev tools (`pytest`, `pytest-asyncio`, `ruff`) live in the `dev` optional-dependency
+group, not in the base venv. The `.venv/bin` dir has **no `pytest`/`ruff` on PATH**.
+
+- Install dev tools once: `uv sync --extra dev`
+- Run tests: `.venv/bin/python -m pytest -q` (asyncio_mode=auto; plain `async def test_*` works)
+- Lint/format: `ruff check app tests` / `ruff format --check app tests` (ruff resolves config from `pyproject.toml`)
 
 ---
 

@@ -32,7 +32,7 @@ class LLMProviderFactory:
             temperature=temperature,
         )
 
-    def _create_deepseek(self, temperature: float = 0.7) -> BaseChatModel:
+    def _create_deepseek(self, temperature: float = 0.7, reasoning_effort: str | None = None) -> BaseChatModel:
         kwargs: dict = {
             "model": "deepseek-v4-flash",
             "api_key": settings.deepseek_api_key,
@@ -43,12 +43,12 @@ class LLMProviderFactory:
             kwargs["model_kwargs"] = {
                 "extra_body": {
                     "thinking": {"type": "enabled"},
-                    "reasoning_effort": settings.thinking_effort,
+                    "reasoning_effort": reasoning_effort or settings.thinking_effort,
                 }
             }
         return ChatOpenAI(**kwargs)
 
-    def _create_gemini(self, temperature: float = 0.7) -> BaseChatModel:
+    def _create_gemini(self, temperature: float = 0.7, reasoning_effort: str | None = None) -> BaseChatModel:
         kwargs: dict = {
             "model": "gemini-3.5-flash",
             "api_key": settings.gemini_api_key,
@@ -59,7 +59,9 @@ class LLMProviderFactory:
             # Gemini 3.x maps graduated thinking straight to `reasoning_effort`
             # (unlike DeepSeek's thinking:{type} flag). It cannot fully disable
             # thinking, so reasoning still consumes part of the max_tokens budget.
-            kwargs["model_kwargs"] = {"extra_body": {"reasoning_effort": settings.thinking_effort}}
+            # A lower effort here means less *hidden* thinking, so the agent's
+            # visible reasoning prefix starts streaming sooner.
+            kwargs["model_kwargs"] = {"extra_body": {"reasoning_effort": reasoning_effort or settings.thinking_effort}}
         return ChatOpenAI(**kwargs)
 
     def _create_openai(self, temperature: float = 0.7) -> BaseChatModel:
@@ -87,6 +89,7 @@ class LLMProviderFactory:
         provider: str | None = None,
         temperature: float = 0.7,
         tools: list | None = None,
+        reasoning_effort: str | None = None,
     ) -> BaseChatModel:
         """Get a model instance, optionally with tools bound.
 
@@ -94,6 +97,7 @@ class LLMProviderFactory:
             provider: Specific provider name, or None for default.
             temperature: Sampling temperature.
             tools: Optional list of tools to bind.
+            reasoning_effort: Override hidden-thinking effort (gemini/deepseek only).
 
         Returns:
             A configured chat model instance.
@@ -110,7 +114,10 @@ class LLMProviderFactory:
         if target not in factory_map:
             raise ValueError(f"Unknown provider: {target}")
 
-        model = factory_map[target](temperature=temperature)
+        if target in ("gemini", "deepseek"):
+            model = factory_map[target](temperature=temperature, reasoning_effort=reasoning_effort)
+        else:
+            model = factory_map[target](temperature=temperature)
         if tools:
             model = model.bind_tools(tools)
         return model

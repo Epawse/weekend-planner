@@ -19,7 +19,9 @@ The room store is an in-memory process dictionary for hackathon demo scope.
 - `POST /api/room/{room_id}/reset?user=red&scenario=friends`
 - `POST /api/room/{room_id}/scenario`
 - `POST /api/room/{room_id}/advance?user=red`
+- `POST /api/room/{room_id}/advance/stream?user=red&mode=auto` (SSE: `reasoning` deltas then one `done`; falls back to the scripted advance on any LLM failure)
 - `POST /api/room/{room_id}/message`
+- `POST /api/room/{room_id}/message/stream` (SSE: commits the user message first, streams `reasoning` deltas, then one `done`; falls back to the scripted reply when no LLM is configured or the patch fails)
 - `POST /api/room/{room_id}/vote`
 - `POST /api/room/{room_id}/reaction`
 - `POST /api/room/{room_id}/simulate?user=red`

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import AsyncGenerator
 from typing import Protocol
 
 import structlog
@@ -55,6 +56,66 @@ async def generate_room_patch(room: dict) -> RoomPatch:
         except Exception as repair_error:
             logger.warning("room_patch_repair_failed", reason=str(repair_error))
             raise LLMRoomAgentError(str(repair_error)) from repair_error
+
+
+_PATCH_SENTINEL = "===PATCH==="
+
+
+async def stream_room_patch(room: dict) -> AsyncGenerator[dict, None]:
+    """Stream the agent's *visible* reasoning, then yield the validated RoomPatch.
+
+    Yields ``{"type": "reasoning", "delta": str}`` while the rationale streams,
+    then exactly one ``{"type": "patch", "patch": RoomPatch}``. Raises
+    LLMRoomAgentError on failure so the caller can fall back to the scripted path.
+    """
+    prompt_payload = _build_prompt_payload(room)
+    messages = [
+        SystemMessage(content=_STREAM_SYSTEM_PROMPT),
+        HumanMessage(content=json.dumps(prompt_payload, ensure_ascii=False)),
+    ]
+    order = llm_factory.get_provider_order()
+    if not order:
+        raise LLMRoomAgentError("No LLM providers configured")
+    # Low hidden-thinking effort so the reasoning is produced as visible,
+    # streamable text (and the first token arrives sooner).
+    model = llm_factory.get_model(provider=order[0], temperature=0.35, reasoning_effort="low")
+
+    buffer = ""
+    emitted = 0
+    in_json = False
+    try:
+        async for chunk in model.astream(messages):
+            piece = getattr(chunk, "content", "")
+            if not isinstance(piece, str) or not piece:
+                continue
+            buffer += piece
+            if in_json:
+                continue
+            # Reasoning ends at the sentinel, or at the JSON's opening brace.
+            candidates = [index for index in (buffer.find(_PATCH_SENTINEL), buffer.find("{")) if index >= 0]
+            stop = min(candidates) if candidates else -1
+            if stop >= 0:
+                if stop > emitted:
+                    yield {"type": "reasoning", "delta": buffer[emitted:stop]}
+                emitted = stop
+                in_json = True
+            else:
+                # Hold back a sentinel-length tail so a split sentinel never leaks.
+                safe = len(buffer) - len(_PATCH_SENTINEL)
+                if safe > emitted:
+                    yield {"type": "reasoning", "delta": buffer[emitted:safe]}
+                    emitted = safe
+    except Exception as exc:  # noqa: BLE001 - surfaced as a fallback trigger
+        raise LLMRoomAgentError(f"room stream failed: {exc}") from exc
+
+    cut = buffer.find(_PATCH_SENTINEL)
+    if cut < 0:
+        cut = buffer.find("{")
+    reasoning_text = buffer[:cut].replace(_PATCH_SENTINEL, "").strip()[:600] if cut > 0 else ""
+    patch = _parse_room_patch(_extract_json(buffer))
+    if reasoning_text:
+        patch.reasoning = reasoning_text
+    yield {"type": "patch", "patch": patch}
 
 
 def _response_content(response: _LLMResponse | str) -> str:
@@ -192,6 +253,10 @@ def _available_venue_ids(room: dict) -> list[str]:
 
 _SCHEMA_SUMMARY = {
     "next_phase_hint": "continue_chat|ready_to_plan|voting|consensus|final_ready|revise_plan",
+    "reasoning": (
+        "你做出这一步决定的真实推理：先看每个人的硬约束，再找冲突，再决定取舍。"
+        "简体中文，分 2-4 个短句或要点，80-200 字，像在心里推演，不是说给用户听的话。"
+    ),
     "messages": [
         {
             "speaker_id": "agent|red|green|blue|pink|wife",
@@ -241,6 +306,10 @@ _SYSTEM_PROMPT = """你是美团多人周末规划房间里的协作 Agent。
 你不能编造地点、坐标、确认码、真实支付、真实下单或真实订座。
 你只能基于提供的成员、plan_id、venue_id、当前阶段和现有对话，生成下一批可见消息、偏好增量、方案文案、共识解释或分享文案。
 语气要像真实 AI 助手和真实成员聊天，不要像后台日志。
+
+reasoning 字段：写出你这一步真实的思考过程（先看每个人的硬约束 → 找出冲突 → 决定取舍 → 得到结论），\
+简体中文，2-4 个短句或要点，像在心里推演，不是说给用户听的话。\
+messages 仍然是给用户看的对话，不要把推理塞进 messages。
 """
 
 _REPAIR_PROMPT = """你正在修复一个 RoomPatch JSON 输出。
@@ -248,3 +317,15 @@ _REPAIR_PROMPT = """你正在修复一个 RoomPatch JSON 输出。
 不要新增 schema 之外的字段。
 如果缺信息，用空数组、空对象或 null。
 """
+
+_STREAM_SYSTEM_PROMPT = (
+    _SYSTEM_PROMPT
+    + """
+【输出格式 - 必须严格遵守，分三部分】
+1) 先输出你这一步真实的思考过程：纯中文文本，2-4 个短句，\
+顺序是「先看每个人的硬约束 → 找出冲突 → 决定取舍 → 得到结论」，\
+像在心里推演，不是说给用户听的话。
+2) 然后单独一行输出分隔符：===PATCH===
+3) 然后输出严格 JSON 的 RoomPatch（messages 才是给用户看的对话）。JSON 里不需要再写 reasoning 字段。
+"""
+)

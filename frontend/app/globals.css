@@ -90,3 +90,65 @@ body {
 .animate-pulse-dot {
   animation: pulse-dot 1.5s ease-in-out infinite;
 }
+
+/* Blinking caret shown at the end of a message while it streams in */
+@keyframes caret-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+.animate-caret-blink {
+  animation: caret-blink 1s steps(1, end) infinite;
+}
+
+/* Bouncing dots for the "正在输入" typing indicator */
+@keyframes typing-dot {
+  0%,
+  80%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.35;
+  }
+  40% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
+}
+
+.animate-typing-dot {
+  animation: typing-dot 1.2s ease-in-out infinite;
+}
+
+/* Entrance for newly added chat bubbles / typing rows */
+@keyframes message-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-message-in {
+  animation: message-in 0.28s ease-out both;
+}
+
+/* Respect users who prefer reduced motion: keep final state, drop animation */
+@media (prefers-reduced-motion: reduce) {
+  .animate-in,
+  .fade-in,
+  .slide-in-from-bottom-1,
+  .animate-pulse-dot,
+  .animate-caret-blink,
+  .animate-typing-dot,
+  .animate-message-in {
+    animation: none !important;
+  }
+}

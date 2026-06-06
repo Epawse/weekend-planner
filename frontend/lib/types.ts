@@ -404,6 +404,8 @@ export interface SharedMessage {
   content: string;
   created_at: string;
   related_plan_id: string | null;
+  /** The agent's genuine step reasoning (LLM mode only); shown in a collapsible panel. */
+  reasoning?: string;
 }
 
 export interface Vote {

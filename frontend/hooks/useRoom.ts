@@ -10,14 +10,18 @@ import {
   sendRoomReaction,
   sendRoomVote,
   simulateRoom,
+  streamAdvanceRoom,
+  streamRoomMessage,
   switchRoomScenario,
 } from "@/lib/api";
-import type { ParticipantId, RoomReactionType, RoomState, Scenario } from "@/lib/types";
+import type { ParticipantId, RoomReactionType, RoomState, Scenario, SharedMessage } from "@/lib/types";
 
 interface UseRoomReturn {
   room: RoomState | null;
   isLoading: boolean;
   isPlayingDemo: boolean;
+  isAgentThinking: boolean;
+  liveReasoning: string;
   error: string | null;
   reloadRoom: () => Promise<void>;
   resetDemo: (scenario?: Scenario) => Promise<void>;
@@ -35,6 +39,8 @@ export function useRoom(roomId: string, userId: ParticipantId): UseRoomReturn {
   const [room, setRoom] = useState<RoomState | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isPlayingDemo, setIsPlayingDemo] = useState(false);
+  const [isAgentThinking, setIsAgentThinking] = useState(false);
+  const [liveReasoning, setLiveReasoning] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
@@ -108,9 +114,43 @@ export function useRoom(roomId: string, userId: ParticipantId): UseRoomReturn {
     async (content: string) => {
       const trimmed = content.trim();
       if (!trimmed) return;
-      await updateRoom(() => sendRoomMessage(roomId, { actor_id: currentActorId, content: trimmed }));
+      const actor = currentActorId;
+      // Show the member's own message first, then "thinking" — the message is
+      // what triggers the agent, so it must precede the thinking indicator.
+      setRoom((prev) => (prev ? appendOptimisticMessage(prev, actor, trimmed) : prev));
+      setIsAgentThinking(true);
+      setLiveReasoning("");
+      setError(null);
+      try {
+        let nextRoom: RoomState | null = null;
+        try {
+          // Stream the agent's visible reasoning token-by-token while it thinks;
+          // the final event carries the canonical room (with the reply + reasoning).
+          for await (const event of streamRoomMessage(roomId, actor, trimmed)) {
+            if (event.type === "reasoning") {
+              setLiveReasoning((prev) => prev + event.delta);
+            } else if (event.type === "done") {
+              nextRoom = event.room;
+            }
+          }
+        } catch {
+          // Streaming unavailable — fall back to the non-streaming send so the
+          // turn never stalls (no live reasoning in this path). If the stream
+          // dropped *after* the server already committed the user message, this
+          // re-appends it server-side; accepted for the in-memory demo scope
+          // (no persistence / multiplayer), and `setRoom` below reconciles to
+          // whatever the server returns.
+          nextRoom = await sendRoomMessage(roomId, { actor_id: actor, content: trimmed });
+        }
+        if (nextRoom) setRoom(nextRoom);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "房间更新失败");
+      } finally {
+        setIsAgentThinking(false);
+        setLiveReasoning("");
+      }
     },
-    [currentActorId, roomId, updateRoom]
+    [currentActorId, roomId]
   );
 
   const voteForPlan = useCallback(
@@ -146,7 +186,43 @@ export function useRoom(roomId: string, userId: ParticipantId): UseRoomReturn {
       let latest = room;
       for (let index = 0; index < 12; index += 1) {
         if (latest?.stage === "final_plan_ready" || latest?.stage === "done") break;
-        const nextRoom = await advanceRoom(roomId, latest?.active_user_id ?? currentActorId);
+        const actor = latest?.active_user_id ?? currentActorId;
+        const prevRoom = latest;
+        setIsAgentThinking(true);
+        setLiveReasoning("");
+        let nextRoom: RoomState | null = null;
+        try {
+          // Real Gemini drives the demo (mode=auto), streaming its visible
+          // reasoning token-by-token while it thinks; the final event carries
+          // the updated room state.
+          for await (const event of streamAdvanceRoom(roomId, actor, "auto")) {
+            if (event.type === "reasoning") {
+              setLiveReasoning((prev) => prev + event.delta);
+            } else if (event.type === "done") {
+              nextRoom = event.room;
+            }
+          }
+        } catch {
+          // Streaming unavailable — fall back to the non-streaming advance so the
+          // demo never stalls.
+          nextRoom = await advanceRoom(roomId, actor, "auto");
+        }
+        if (!nextRoom) {
+          setIsAgentThinking(false);
+          setLiveReasoning("");
+          break;
+        }
+        // Reveal new member lines first: commit the room without the trailing
+        // agent reply so the members type out above the "thinking" bubble.
+        const heldBack = roomWithoutTrailingAgent(prevRoom, nextRoom);
+        if (heldBack) {
+          setRoom(heldBack.room);
+          await sleep(memberRevealMs(heldBack.newMemberCount));
+        }
+        // Then drop "thinking" and reveal the agent reply (its reasoning stays
+        // visible in the message's own panel).
+        setIsAgentThinking(false);
+        setLiveReasoning("");
         setRoom(nextRoom);
         latest = nextRoom;
         await sleep(demoDelayMs(nextRoom));
@@ -155,6 +231,8 @@ export function useRoom(roomId: string, userId: ParticipantId): UseRoomReturn {
       setError(err instanceof Error ? err.message : "演示播放失败");
     } finally {
       setIsPlayingDemo(false);
+      setIsAgentThinking(false);
+      setLiveReasoning("");
     }
   }, [currentActorId, isPlayingDemo, room, roomId]);
 
@@ -170,6 +248,8 @@ export function useRoom(roomId: string, userId: ParticipantId): UseRoomReturn {
     room,
     isLoading,
     isPlayingDemo,
+    isAgentThinking,
+    liveReasoning,
     error,
     reloadRoom: reload,
     resetDemo,
@@ -182,6 +262,44 @@ export function useRoom(roomId: string, userId: ParticipantId): UseRoomReturn {
     simulateDemo,
     executeActivePlan,
   };
+}
+
+function appendOptimisticMessage(room: RoomState, actorId: ParticipantId, content: string): RoomState {
+  const actor = room.participants.find((item) => item.id === actorId);
+  const message: SharedMessage = {
+    id: `optimistic_${room.messages.length + 1}_${Date.now()}`,
+    actor_id: actorId,
+    actor_name: actor?.name ?? "我",
+    actor_avatar: actor?.avatar ?? "",
+    type: "user_message",
+    content,
+    created_at: new Date().toISOString(),
+    related_plan_id: null,
+  };
+  return { ...room, messages: [...room.messages, message] };
+}
+
+/**
+ * Split a freshly advanced room so member lines reveal before the agent reply:
+ * returns the room with the trailing agent message(s) removed, plus how many new
+ * member lines that exposes. Returns null when there is nothing to hold back
+ * (agent-only turn, or no new member lines vs the previous room).
+ */
+function roomWithoutTrailingAgent(
+  prev: RoomState | null,
+  next: RoomState
+): { room: RoomState; newMemberCount: number } | null {
+  const messages = next.messages;
+  let cut = messages.length;
+  while (cut > 0 && messages[cut - 1].actor_id === "agent") cut -= 1;
+  if (cut === messages.length) return null;
+  const prevCount = prev?.messages.length ?? 0;
+  if (cut <= prevCount) return null;
+  return { room: { ...next, messages: messages.slice(0, cut) }, newMemberCount: cut - prevCount };
+}
+
+function memberRevealMs(count: number): number {
+  return Math.min(count, 3) * 1100 + 500;
 }
 
 function sleep(ms: number) {

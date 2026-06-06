@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   ArrowRight,
   CalendarCheck,
+  ChevronDown,
   Play,
   Send,
   Sparkles,
@@ -13,6 +14,8 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PlanCanvas } from "@/components/canvas/PlanCanvas";
+import { useAutoScroll } from "@/hooks/useAutoScroll";
+import { useTypewriter } from "@/hooks/useTypewriter";
 import { cn } from "@/lib/utils";
 import { GroupMemoryPanel } from "./GroupMemoryPanel";
 import { PlanOptionCards } from "./PlanOptionCards";
@@ -34,6 +37,8 @@ interface CollaborativeThreadProps {
   selectedPlanId: string | null;
   selectedTimelineId: string | null;
   isPlayingDemo: boolean;
+  isAgentThinking: boolean;
+  liveReasoning: string;
   onViewChange: (view: RoomActiveView) => void;
   onSelectTimeline: (timelineId: string, markerId: string) => void;
   onSelectPlan: (planId: string) => void;
@@ -51,6 +56,8 @@ export function CollaborativeThread({
   selectedPlanId,
   selectedTimelineId,
   isPlayingDemo,
+  isAgentThinking,
+  liveReasoning,
   onViewChange,
   onSelectTimeline,
   onSelectPlan,
@@ -88,8 +95,11 @@ export function CollaborativeThread({
       {activeView === "chat" ? (
         <ChatView
           room={room}
+          activeUserId={activeUserId}
           draft={draft}
           isPlayingDemo={isPlayingDemo}
+          isAgentThinking={isAgentThinking}
+          liveReasoning={liveReasoning}
           hasOptions={hasOptions}
           canOpenFinal={canOpenFinal}
           onDraftChange={setDraft}
@@ -176,8 +186,11 @@ function MainHeader({
 
 function ChatView({
   room,
+  activeUserId,
   draft,
   isPlayingDemo,
+  isAgentThinking,
+  liveReasoning,
   hasOptions,
   canOpenFinal,
   onDraftChange,
@@ -186,8 +199,11 @@ function ChatView({
   onViewChange,
 }: {
   room: RoomState;
+  activeUserId: ParticipantId;
   draft: string;
   isPlayingDemo: boolean;
+  isAgentThinking: boolean;
+  liveReasoning: string;
   hasOptions: boolean;
   canOpenFinal: boolean;
   onDraftChange: (value: string) => void;
@@ -195,12 +211,20 @@ function ChatView({
   onPlayDemo: () => void;
   onViewChange: (view: RoomActiveView) => void;
 }) {
+  const { frames, hiddenIds, tick } = useTypewriter(room.messages, {
+    selfId: activeUserId,
+    enabled: room.stage !== "idle",
+  });
+  const scrollSignal = `${room.messages.length}:${room.typing_participants.length}:${tick}:${isAgentThinking ? 1 : 0}:${liveReasoning.length}`;
+  const { pinned, scrollToBottom, setScrollNode } = useAutoScroll(scrollSignal);
+
   const submit = () => {
     onSendMessage(draft);
     onDraftChange("");
+    scrollToBottom();
   };
 
-  if (room.stage === "idle") {
+  if (room.stage === "idle" && !isPlayingDemo) {
     return (
       <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex min-h-full max-w-4xl flex-col justify-center px-4 py-8">
@@ -232,22 +256,40 @@ function ChatView({
 
   return (
     <>
-      <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto flex max-w-4xl flex-col gap-4 px-4 py-5">
-          <RoomMessageList
-            messages={room.messages}
-            participants={room.participants}
-            typingParticipants={room.typing_participants}
-          />
-
-          {hasOptions && (
-            <CompactPlanReadyCard
-              room={room}
-              canOpenFinal={canOpenFinal}
-              onViewChange={onViewChange}
+      <div className="relative min-h-0 flex-1">
+        <div ref={setScrollNode} className="custom-scrollbar h-full overflow-y-auto">
+          <div className="mx-auto flex max-w-4xl flex-col gap-4 px-4 py-5">
+            <RoomMessageList
+              messages={room.messages}
+              participants={room.participants}
+              typingParticipants={room.typing_participants}
+              streaming={frames}
+              hiddenIds={hiddenIds}
+              agentThinking={isAgentThinking}
+              liveReasoning={liveReasoning}
             />
-          )}
+
+            {hasOptions && (
+              <CompactPlanReadyCard
+                room={room}
+                canOpenFinal={canOpenFinal}
+                onViewChange={onViewChange}
+              />
+            )}
+          </div>
         </div>
+
+        {!pinned && (
+          <button
+            type="button"
+            onClick={scrollToBottom}
+            aria-label="回到最新消息"
+            className="absolute bottom-4 left-1/2 inline-flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-zinc-200 bg-white/95 px-3 py-1.5 text-xs font-medium text-zinc-600 shadow-md shadow-zinc-300/40 backdrop-blur transition hover:text-zinc-900"
+          >
+            回到最新
+            <ChevronDown className="h-3.5 w-3.5" />
+          </button>
+        )}
       </div>
       <ChatComposer
         scenario={room.scenario}
