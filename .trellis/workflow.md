@@ -285,6 +285,15 @@ When a user request matches one of these intents inside an active task, route fi
 - Verdict-bearing 评审是定义式的（研究族原则 7 反向收割）：出判定前必须加载对应 gate 的 skill/agent 协议（`trellis-review-gate` 各 mode），凭印象 ad-hoc 复刻清单不算过 gate——读不到协议不出判定。
 - 摩擦当场入账：用户纠偏流程（"为什么不走 X"）或撞到规则真空/别扭时刻 → load `trellis-friction` 记一行台账后继续干活（捕获≠修改；分诊在 review-sweep 段 2，立法走 PR）。
 
+### 发现闭环（Findings Closure）
+
+凡产出 findings 的调研 / 审计 / walkthrough / 评审报告，findings 产出 ≠ 闭环——必须逐条分诊 + 收口回测，防"发现被范围切割静默削薄"（判例 2026-07-07 admin：W1 首用走查点名队列"概念墙"，承接进 W2/W2.3 时被"降级入口"替"重做本体"、"后续 U 线"替"本轮验收"静默削薄，W2.3 以"向导退役完成"标 DONE；A6 统一上传方案停在 stub 从未拾取）。
+
+1. **发现台账强制分诊**：报告以逐条 disposition 清单收尾，每条三选一——(a) 转 task map 行 / child task，**验收标准回指原发现本体**（不是主路径的近似）；(b) 显式拒绝 / 降级，一句理由，**作为决策点呈现给用户**，agent 不得静默改写范围；(c) 挂 BACKLOG，带触发条件。无 disposition 的发现视为未闭环，parent 不得收口。
+2. **收口回测**：parent finalize / merge-review 前逐条核对上游发现已 disposition；完成口径必须回测**原始发现本体**（"四问复测"复测原问题页面，不许只测主路径就标 DONE）。
+
+> 出生证：**C 信任验证**——防"发现被范围切割静默削薄"（判例 2026-07-07 admin W1→W2.3）。复审触发=连续两轮 review-sweep 无发现闭环违例。
+
 ### Loading Step Detail
 
 At each step, run this to fetch detailed guidance:

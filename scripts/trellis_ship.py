@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -20,8 +21,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-DEFAULT_REPO = "ORG/REPO"
+DEFAULT_REPO = "Epawse/weekend-planner"
 DEFAULT_BASE = "main"
+# Break-glass for legitimate multi-PR incremental delivery under one active
+# task: merging a delivered slice while the parent task stays in_progress.
+# Aligns with TRELLIS_ALLOW_PARALLEL in the planning gate.
+INCREMENTAL_BREAK_GLASS_ENV = "TRELLIS_SHIP_INCREMENTAL"
 SHARED_BRANCHES = {"main", "master"}
 BRANCH_PATTERN = re.compile(
     r"^(feat|fix|hotfix|docs|chore|test|refactor|ci|build|perf|style|revert)/"
@@ -427,11 +432,23 @@ def validate_local_merge_ready(repo_root: Path) -> list[str]:
     current = run_command(["python3", ".trellis/scripts/task.py", "current"], cwd=repo_root)
     if current.returncode == 0 and current.stdout.strip():
         active = current.stdout.strip().splitlines()[-1].strip()
-        errors.append(
-            f"仍有活动 Trellis task `{active}`；"
-            "先在 `/trellis:ship` 的 finalization 阶段运行 `/trellis:finish-work`，"
-            "提交并 push 可入库的 Trellis bookkeeping 后再 merge。"
-        )
+        if os.environ.get(INCREMENTAL_BREAK_GLASS_ENV, "").strip() not in ("", "0"):
+            # Multi-PR incremental delivery: merge a delivered slice while the
+            # parent task legitimately stays in_progress. Downgrade the blocker
+            # to a recorded warning instead of refusing the merge.
+            print(
+                f"warning: incremental merge under active task `{active}` "
+                f"（{INCREMENTAL_BREAK_GLASS_ENV}=1 破玻璃）——多 PR 增量交付通道，"
+                "parent 未收尾即 merge；确认这是有意的分批交付。",
+                file=sys.stderr,
+            )
+        else:
+            errors.append(
+                f"仍有活动 Trellis task `{active}`；"
+                "先在 `/trellis:ship` 的 finalization 阶段运行 `/trellis:finish-work`，"
+                "提交并 push 可入库的 Trellis bookkeeping 后再 merge。"
+                "（多 PR 增量交付：设 TRELLIS_SHIP_INCREMENTAL=1 破玻璃。）"
+            )
 
     return errors
 

@@ -266,6 +266,8 @@ python3 ./scripts/trellis_ship.py merge --number <pr-number> --cleanup
 
 该脚本固定调用 `gh pr merge --squash`,并在远端状态不是 open / mergeable / non-draft / base=main,或本地 finalization 未完成时拒绝执行。
 
+多 PR 增量交付例外:一个 parent task 分批交付、需要在 parent 仍 `in_progress` 时 merge 已交付的一片时,设 `TRELLIS_SHIP_INCREMENTAL=1` 破玻璃——把"仍有活动 Trellis task"这一条拦截降级为 warning(对齐 planning gate 的 `TRELLIS_ALLOW_PARALLEL`);dirty / 未 push / 远端未就绪等其余检查照常拦截。默认(不设该变量)行为不变:活动 task 未收尾即拒绝 merge。
+
 若 merge 失败:
 
 1. 不回滚 Trellis finalization commit,不把 archived task 移回 active。

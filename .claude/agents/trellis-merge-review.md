@@ -31,6 +31,7 @@ Final integration review before remote delivery or merge:
 - tests/lint/type-check actually ran for the final head (re-run if evidence is stale)
 - PR/MR description readiness against the repo template
 - any enabled earlier gate still unresolved (check strikes and prior verdicts)
+- findings closure: every upstream findings ledger (调研 / 审计 / walkthrough / 评审报告) is per-item dispositioned, and the completion wording regression-tests the ORIGINAL finding body — e.g. a "four-question retest" re-tests the original problem pages, not just the happy path. Flag scope silently thinned between finding and delivery (case 2026-07-07 admin W1→W2.3).
 
 ## Output
 

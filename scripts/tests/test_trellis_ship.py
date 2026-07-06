@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -316,6 +317,37 @@ class TrellisShipTest(unittest.TestCase):
             trellis_ship.run_command = original_run_command
 
         self.assertTrue(any("活动 Trellis task" in error for error in errors))
+
+    def test_validate_local_merge_ready_incremental_break_glass(self):
+        original_run_command = trellis_ship.run_command
+        original_git_stdout = trellis_ship.git_stdout
+
+        def fake_git_stdout(_repo_root, args):
+            if args == ["status", "--porcelain"]:
+                return ""
+            if args == ["rev-list", "--count", "@{u}..HEAD"]:
+                return "0"
+            return ""
+
+        def fake_run_command(args, cwd=None):
+            if args == ["python3", ".trellis/scripts/task.py", "current"]:
+                return trellis_ship.CommandResult(0, ".trellis/tasks/06-11-ship-command\n", "")
+            return trellis_ship.CommandResult(0, "", "")
+
+        os.environ[trellis_ship.INCREMENTAL_BREAK_GLASS_ENV] = "1"
+        self.addCleanup(os.environ.pop, trellis_ship.INCREMENTAL_BREAK_GLASS_ENV, None)
+        try:
+            trellis_ship.git_stdout = fake_git_stdout
+            trellis_ship.run_command = fake_run_command
+
+            errors = trellis_ship.validate_local_merge_ready(Path("."))
+        finally:
+            trellis_ship.git_stdout = original_git_stdout
+            trellis_ship.run_command = original_run_command
+
+        # Break-glass downgrades the active-task blocker to a warning; other
+        # merge-readiness checks (dirty tree, unpushed commits) still apply.
+        self.assertFalse(any("活动 Trellis task" in error for error in errors))
 
 
 class InstallTrellisCommandsTest(unittest.TestCase):
