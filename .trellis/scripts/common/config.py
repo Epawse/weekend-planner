@@ -164,8 +164,7 @@ def _next_content_line(lines: list[str], start: int) -> tuple[int, str]:
 
 
 # Defaults
-DEFAULT_SESSION_COMMIT_MESSAGE = "chore: record journal"
-DEFAULT_MAX_JOURNAL_LINES = 2000
+DEFAULT_SESSION_COMMIT_MESSAGE = "chore: record session index"
 DEFAULT_SESSION_AUTO_COMMIT = True
 
 CONFIG_FILE = "config.yaml"
@@ -200,16 +199,6 @@ def get_session_commit_message(repo_root: Path | None = None) -> str:
     """Get the commit message for auto-committing session records."""
     config = _load_config(repo_root)
     return config.get("session_commit_message", DEFAULT_SESSION_COMMIT_MESSAGE)
-
-
-def get_max_journal_lines(repo_root: Path | None = None) -> int:
-    """Get the maximum lines per journal file."""
-    config = _load_config(repo_root)
-    value = config.get("max_journal_lines", DEFAULT_MAX_JOURNAL_LINES)
-    try:
-        return int(value)
-    except (ValueError, TypeError):
-        return DEFAULT_MAX_JOURNAL_LINES
 
 
 def get_session_auto_commit(repo_root: Path | None = None) -> bool:

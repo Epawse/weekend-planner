@@ -7,21 +7,18 @@
 # Session Recording
 #-------------------------------------------------------------------------------
 
-# Commit message used when auto-committing journal/index changes
-# after running add_session.py
-session_commit_message: "chore: record journal"
-
-# Maximum lines per journal file before rotating to a new one
-max_journal_lines: 2000
+# Commit message used when auto-committing session-index changes
+# after running add_session.py (journal files are retired)
+session_commit_message: "chore: record session index"
 
 #-------------------------------------------------------------------------------
 # Session Auto-Commit
 #-------------------------------------------------------------------------------
 
-# Auto-commit behavior for session journal + task archive operations.
-# - true (default): scripts auto-stage and auto-commit journal / task changes
+# Auto-commit behavior for session-index + task archive operations.
+# - true (default): scripts auto-stage and auto-commit index / task changes
 #   after add_session.py / task.py archive runs.
-# - false: scripts do not touch git. Files (journal-*.md, task archive moves)
+# - false: scripts do not touch git. Files (index.md, task archive moves)
 #   are still written to disk; you decide whether to git add / commit.
 #
 # Use `false` if your project's .gitignore intentionally excludes `.trellis/`
@@ -30,7 +27,7 @@ max_journal_lines: 2000
 #
 # Accepts: true / false / yes / no / 1 / 0 / on / off (case-insensitive).
 #
-# session_auto_commit: true
+session_auto_commit: false
 
 #-------------------------------------------------------------------------------
 # Task Lifecycle Hooks
@@ -49,6 +46,14 @@ max_journal_lines: 2000
 #     - "echo 'Task finished'"
 #   after_archive:
 #     - "echo 'Task archived'"
+
+# Write-time memory maintenance nudge (fail-open; archive is the natural
+# "session wrapping up" moment):
+hooks:
+  after_archive:
+    - "echo '[memory] task archived - write-time maintenance: sweep .trellis/workspace/<dev>/memory.md (drop expired entries, log new durable facts, keep under ~3000 chars)'"
+    - "echo '[knowledge] milestone check: parent wrapped or major decision made? cross-project takeaways go to the vault (vault-deposit / trellis-harvest); friction entries stay in friction.md for the next sweep'"
+
 
 #-------------------------------------------------------------------------------
 # Monorepo / Packages
@@ -77,14 +82,37 @@ max_journal_lines: 2000
 # default_package: frontend
 
 #-------------------------------------------------------------------------------
+# Channel worker OOM guard
+#-------------------------------------------------------------------------------
+# Default safeguards for `trellis channel spawn` workers. The guard runs
+# at spawn time (cleans expired idle workers, then enforces the live-worker
+# budget) and inside each supervisor (self-terminates a worker that stays
+# continuously idle past `idle_timeout`).
+#
+# Precedence: CLI flag > env var (TRELLIS_CHANNEL_WORKER_IDLE_TIMEOUT /
+# TRELLIS_CHANNEL_MAX_LIVE_WORKERS) > this config > built-in default.
+#
+# `idle_timeout: 0` disables idle cleanup (workers can sit idle forever
+# unless explicitly killed or given `--timeout`).
+# `max_live_workers: 0` disables the spawn-time budget check.
+#
+channel:
+  worker_guard:
+    idle_timeout: 5m
+    max_live_workers: 6
+
+#-------------------------------------------------------------------------------
 # Codex (dispatch behavior)
 #-------------------------------------------------------------------------------
-# Codex-only knob; other platforms ignore it. Default ("inline") makes the
-# main Codex agent edit code directly because Codex sub-agents run with
-# `fork_turns="none"` isolation and can't inherit the parent session's
-# task context. Set to "sub-agent" to opt into the legacy dispatch model
-# (main agent spawns trellis-implement / trellis-check / trellis-research
-# sub-agents).
+# Codex-only knob; other platforms ignore it. Rendered default is
+# "sub-agent": Codex multi-agent is stable, .codex/agents/trellis-*.toml
+# definitions ship with this skeleton, and the PreToolUse spawn_agent hook
+# (inject-subagent-context) rewrites each dispatch with file-backed task
+# context, so child agents do not rely on parent-session state. The main
+# agent spawns trellis-implement / trellis-check / trellis-research and
+# passes `Active task: <path>` first. Set to "inline" to fall back to the
+# main session editing directly (also the resolver's fallback when this
+# key is absent or invalid).
 #
-# codex:
-#   dispatch_mode: inline  # or "sub-agent" to dispatch trellis-* sub-agents
+codex:
+  dispatch_mode: sub-agent  # or "inline" for main-session-direct editing

@@ -43,6 +43,11 @@
             "type": "command",
             "command": "python3 .claude/hooks/inject-subagent-context.py",
             "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "python3 .claude/hooks/dispatch-guard.py",
+            "timeout": 5
           }
         ]
       },
@@ -53,6 +58,21 @@
             "type": "command",
             "command": "python3 .claude/hooks/inject-subagent-context.py",
             "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "python3 .claude/hooks/dispatch-guard.py",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 .claude/hooks/inject-git-sop-reminder.py",
+            "timeout": 5
           }
         ]
       }
@@ -69,5 +89,9 @@
       }
     ]
   },
-  "enabledPlugins": {}
+  "enabledPlugins": {},
+  "statusLine": {
+    "type": "command",
+    "command": "python3 .claude/hooks/statusline.py"
+  }
 }

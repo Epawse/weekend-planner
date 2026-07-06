@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# 禁止已推送/已有 upstream 的分支做 rebase（git-pr-sop：已公开历史不可改写）。
+set -euo pipefail
+
+target_branch="${2:-}"
+
+if [ -z "$target_branch" ]; then
+  target_branch=$(git symbolic-ref --quiet --short HEAD || true)
+fi
+
+case "$target_branch" in
+  refs/heads/*) target_branch="${target_branch#refs/heads/}" ;;
+esac
+
+# Detached HEAD / 非本地分支 rebase 场景保守放行，避免误伤 Git 内部流程。
+if [ -z "$target_branch" ] || [ "$target_branch" = "HEAD" ]; then
+  exit 0
+fi
+
+if ! git show-ref --verify --quiet "refs/heads/$target_branch"; then
+  exit 0
+fi
+
+blocked_reason=""
+
+if git rev-parse --abbrev-ref --symbolic-full-name "$target_branch@{upstream}" >/dev/null 2>&1; then
+  blocked_reason="该分支已有 upstream，视为已公开历史。"
+else
+  while IFS= read -r remote_ref; do
+    remote_branch="${remote_ref#*/}"
+    if [ "$remote_branch" = "$target_branch" ]; then
+      blocked_reason="远端已存在同名分支 ${remote_ref}，视为已公开历史。"
+      break
+    fi
+  done < <(git for-each-ref --format='%(refname:short)' refs/remotes)
+fi
+
+if [ -n "$blocked_reason" ]; then
+  echo "✖ 禁止 rebase 已推送/已公开分支: ${target_branch}" >&2
+  echo "  $blocked_reason" >&2
+  echo "  已推送分支的 commit hash 可能已被 MR、CI、任务归档或 journal 引用。" >&2
+  echo "  请使用追加 commit 或 merge main；确需改写历史必须得到当前回合明确授权。" >&2
+  echo "  详见 .trellis/spec/guides/git-pr-sop.md「分支内历史与 rebase 约定」。" >&2
+  exit 1
+fi
+
+exit 0

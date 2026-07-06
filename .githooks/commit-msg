@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Conventional Commits 首行校验。
+# 启用：git config core.hooksPath .githooks；逃生口 --no-verify（仅限授权场景）。
+set -euo pipefail
+
+first_line=$(head -n1 "$1")
+
+# 放行：merge / revert 自动提交与 rebase 整理提交
+case "$first_line" in
+  Merge\ *|Revert\ *|fixup!*|squash!*) exit 0 ;;
+esac
+
+if echo "$first_line" | grep -qE '^(feat|fix|hotfix|docs|chore|test|refactor|ci|build|perf|style|revert)(\([a-z0-9][a-z0-9-]*\))?: .{3,}$'; then
+  exit 0
+fi
+
+echo "✖ commit message 首行不符合 Conventional Commits：" >&2
+echo "    $first_line" >&2
+echo "  期望：<type>(<scope>): <english summary>   例：feat(core): add workflow guard" >&2
+echo "  type ∈ feat|fix|hotfix|docs|chore|test|refactor|ci|build|perf|style|revert；中文说明写正文。" >&2
+echo "  详见 .trellis/spec/guides/git-pr-sop.md" >&2
+exit 1

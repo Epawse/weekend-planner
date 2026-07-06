@@ -6,14 +6,17 @@ Task Management Script.
 Usage:
     python3 task.py create "<title>" [--slug <name>] [--assignee <dev>] [--priority P0|P1|P2|P3] [--parent <dir>] [--package <pkg>]
     python3 task.py add-context <dir> <file> <path> [reason] # Add jsonl entry
-    python3 task.py validate <dir>              # Validate jsonl files
+    python3 task.py validate <dir>              # Validate task context + planning gate
     python3 task.py list-context <dir>          # List jsonl entries
     python3 task.py start <dir>                 # Set active task
+    python3 task.py switch <dir>                # Set active task pointer only (no status change)
+    python3 task.py guard [--strict]           # Warn if git branch != active task's branch
     python3 task.py current [--source]          # Show active task
     python3 task.py finish                      # Clear active task
     python3 task.py set-branch <dir> <branch>   # Set git branch
     python3 task.py set-base-branch <dir> <branch>  # Set PR target branch
     python3 task.py set-scope <dir> <scope>     # Set scope for PR title
+    python3 task.py set-strategy <dir> [options] # Set development strategy
     python3 task.py archive <task-dir>          # Archive completed task
     python3 task.py list                        # List active tasks
     python3 task.py list-archive [month]        # List archived tasks
@@ -43,6 +46,8 @@ from common.active_task import (
     set_active_task,
 )
 from common.io import read_json, write_json
+from common.planning_gate import evaluate_planning_gate, format_planning_gate_result
+from common.git import run_git
 from common.task_utils import resolve_task_dir, run_task_hooks
 from common.tasks import iter_active_tasks, children_progress
 
@@ -53,6 +58,8 @@ from common.task_store import (
     cmd_set_branch,
     cmd_set_base_branch,
     cmd_set_scope,
+    cmd_set_strategy,
+    cmd_set_deep_review,
     cmd_add_subtask,
     cmd_remove_subtask,
 )
@@ -66,6 +73,44 @@ from common.task_context import (
 # =============================================================================
 # Command: start / finish
 # =============================================================================
+
+def _current_git_branch(repo_root) -> str | None:
+    """Return the current git branch name, or None when unavailable.
+
+    Uses `symbolic-ref` so a detached HEAD (no branch) returns None rather
+    than a commit hash. run_git swallows the "no git" case (rc != 0), so this
+    is safe to call in environments without git.
+    """
+    rc, out, _ = run_git(["symbolic-ref", "--quiet", "--short", "HEAD"], cwd=repo_root)
+    if rc != 0:
+        return None
+    branch = out.strip()
+    return branch or None
+
+
+def _record_task_branch(task_json_path, repo_root) -> str | None:
+    """Stamp the current git branch into task.json's `branch` field.
+
+    M7 prerequisite: `task.py guard` compares this field with the live git
+    branch, so `start` is where the task↔branch binding is captured. Only
+    writes when on a real branch; never overwrites with an empty value.
+    Returns the branch it recorded, or None when nothing was written.
+    """
+    branch = _current_git_branch(repo_root)
+    if not branch:
+        return None
+    if not task_json_path.is_file():
+        return None
+    data = read_json(task_json_path)
+    if not data:
+        return None
+    if data.get("branch") == branch:
+        return branch
+    data["branch"] = branch
+    if write_json(task_json_path, data):
+        return branch
+    return None
+
 
 def cmd_start(args: argparse.Namespace) -> int:
     """Set active task."""
@@ -92,6 +137,18 @@ def cmd_start(args: argparse.Namespace) -> int:
 
     task_json_path = full_path / FILE_TASK_JSON
 
+    if task_json_path.is_file():
+        data = read_json(task_json_path)
+        if data and data.get("status") == "planning":
+            gate_result = evaluate_planning_gate(full_path, repo_root)
+            if not gate_result.ok:
+                print(colored(format_planning_gate_result(gate_result), Colors.RED))
+                print(
+                    "请补齐规划产物后重试；任务状态保持 planning。",
+                    file=sys.stderr,
+                )
+                return 1
+
     if not resolve_context_key():
         # Degraded mode: no session identity available.
         # Hook didn't inject TRELLIS_CONTEXT_ID (common on Windows + Claude Code,
@@ -115,6 +172,10 @@ def cmd_start(args: argparse.Namespace) -> int:
                 data["status"] = "in_progress"
                 if write_json(task_json_path, data):
                     print(colored("✓ Status: planning → in_progress (degraded)", Colors.GREEN))
+            # M7: bind task to the branch it's started on (guard reads this).
+            recorded = _record_task_branch(task_json_path, repo_root)
+            if recorded:
+                print(colored(f"✓ Branch recorded: {recorded}", Colors.GREEN))
             run_task_hooks("after_start", task_json_path, repo_root)
         return 0
 
@@ -129,6 +190,10 @@ def cmd_start(args: argparse.Namespace) -> int:
                 data["status"] = "in_progress"
                 if write_json(task_json_path, data):
                     print(colored("✓ Status: planning → in_progress", Colors.GREEN))
+            # M7: bind task to the branch it's started on (guard reads this).
+            recorded = _record_task_branch(task_json_path, repo_root)
+            if recorded:
+                print(colored(f"✓ Branch recorded: {recorded}", Colors.GREEN))
 
         print()
         print(colored("The hook will now inject context from this task's jsonl files.", Colors.BLUE))
@@ -159,6 +224,118 @@ def cmd_finish(args: argparse.Namespace) -> int:
     if task_json_path.is_file():
         run_task_hooks("after_finish", task_json_path, repo_root)
     return 0
+
+
+def cmd_switch(args: argparse.Namespace) -> int:
+    """Set the active-task pointer without touching task.json status.
+
+    M2: `start` is the only command that moves the session pointer, but it
+    also flips status planning → in_progress. There was no clean way to fix
+    the pointer during the "planning done, waiting for start" gap, or to
+    recover after archiving the active task left a stale fallback pointing
+    at the wrong task. `switch` is pointer-only — status is never changed.
+    """
+    repo_root = get_repo_root()
+    task_input = args.dir
+
+    if not task_input:
+        print(colored("Error: task directory or name required", Colors.RED))
+        return 1
+
+    full_path = resolve_task_dir(task_input, repo_root)
+
+    if not full_path.is_dir():
+        print(colored(f"Error: Task not found: {task_input}", Colors.RED))
+        print("Hint: Use task name (e.g., 'my-task') or full path (e.g., '.trellis/tasks/01-31-my-task')")
+        return 1
+
+    try:
+        task_dir = full_path.relative_to(repo_root).as_posix()
+    except ValueError:
+        task_dir = str(full_path)
+
+    if not resolve_context_key():
+        # No session identity: pointer is session-scoped, so there is nothing
+        # to write. Unlike `start`, `switch` has no status side effect, so
+        # degraded mode is a clean no-op (report it, exit 0).
+        print(colored(
+            "ℹ Session identity not available; active-task pointer not persisted "
+            "this session (degraded mode). switch is a no-op here.",
+            Colors.YELLOW,
+        ))
+        print(colored(
+            "Hint: run inside an AI IDE/session that exposes session identity, "
+            "or set TRELLIS_CONTEXT_ID before running task.py switch.",
+            Colors.YELLOW,
+        ))
+        return 0
+
+    active = set_active_task(task_dir, repo_root)
+    if active:
+        print(colored(f"✓ Current task set to: {task_dir}", Colors.GREEN))
+        print(f"Source: {active.source}")
+        print(colored("(status unchanged — use task.py start to flip planning → in_progress)", Colors.BLUE))
+        return 0
+
+    print(colored("Error: Failed to set current task", Colors.RED))
+    return 1
+
+
+def cmd_guard(args: argparse.Namespace) -> int:
+    """Warn when the git branch diverges from the active task's branch.
+
+    M7: pre-commit already blocks shared baselines, but nothing checked that
+    the working branch matches the task you think you're on. `guard` compares
+    the active task's task.json `branch` (stamped by `start`) against the live
+    git branch.
+
+    Three states:
+      - match / no active task / empty branch field / no git: silent exit 0
+      - mismatch (default): one-line Chinese warning, exit 0 (soft)
+      - mismatch with --strict: same warning, exit 1
+
+    Designed for zero dependency on colleagues' setups: any missing piece
+    (no runtime pointer, no branch field, no git) degrades to a silent exit 0
+    so wiring this into a shared pre-commit hook never breaks anyone.
+    """
+    repo_root = get_repo_root()
+
+    # No active task → nothing to guard. Silent success.
+    active = resolve_active_task(repo_root)
+    if not active.task_path:
+        return 0
+
+    task_dir = repo_root / active.task_path
+    task_json_path = task_dir / FILE_TASK_JSON
+    if not task_json_path.is_file():
+        return 0
+
+    data = read_json(task_json_path)
+    if not data:
+        return 0
+
+    task_branch = data.get("branch")
+    if not isinstance(task_branch, str) or not task_branch.strip():
+        # Field empty/missing (e.g. task started before M7, or detached HEAD
+        # at start time). Guard has no expectation to enforce → silent 0.
+        return 0
+    task_branch = task_branch.strip()
+
+    git_branch = _current_git_branch(repo_root)
+    if not git_branch:
+        # No git / detached HEAD → cannot compare. Silent 0 (zero-dependency).
+        return 0
+
+    if git_branch == task_branch:
+        return 0
+
+    task_name = data.get("name") or task_dir.name
+    print(colored(
+        f"⚠ 分支与活动任务不一致：当前 git 分支 '{git_branch}'，"
+        f"任务 '{task_name}' 记录的分支为 '{task_branch}'。",
+        Colors.YELLOW,
+    ))
+    return 1 if getattr(args, "strict", False) else 0
 
 
 def cmd_current(args: argparse.Namespace) -> int:
@@ -308,14 +485,18 @@ Usage:
   python3 task.py create <title> --package <pkg>     Create task for a specific package
   python3 task.py create <title> --parent <dir>      Create task as child of parent
   python3 task.py add-context <dir> <jsonl> <path> [reason]  Add entry to jsonl
-  python3 task.py validate <dir>                     Validate jsonl files
+  python3 task.py validate <dir>                     Validate task context + planning gate
   python3 task.py list-context <dir>                 List jsonl entries
   python3 task.py start <dir>                        Set active task
+  python3 task.py switch <dir>                       Set active task pointer only (no status change)
+  python3 task.py guard [--strict]                   Warn if git branch != active task's branch
   python3 task.py current [--source]                 Show active task
   python3 task.py finish                             Clear active task
   python3 task.py set-branch <dir> <branch>          Set git branch
   python3 task.py set-base-branch <dir> <branch>     Set PR target branch
   python3 task.py set-scope <dir> <scope>            Set scope for PR title
+  python3 task.py set-strategy <dir> [options]       Set development strategy
+  python3 task.py set-deep-review <dir> <state>      Set deep-review ledger (pending|done|waived)
   python3 task.py archive <task-dir>                 Archive completed task
   python3 task.py add-subtask <parent> <child>       Link child task to parent
   python3 task.py remove-subtask <parent> <child>    Unlink child from parent
@@ -335,7 +516,11 @@ Examples:
   python3 task.py create "Child task" --slug child --parent .trellis/tasks/01-21-parent
   python3 task.py add-context <dir> implement .trellis/spec/cli/backend/auth.md "Auth guidelines"
   python3 task.py set-branch <dir> task/add-login
+  python3 task.py set-strategy <dir> --execution current-session --git-mode branch --development-mode default --spec-review disabled --code-review enabled --architecture-review disabled --merge-review enabled
   python3 task.py start .trellis/tasks/01-21-add-login
+  python3 task.py switch .trellis/tasks/01-21-add-login  # Move pointer without flipping status
+  python3 task.py guard                              # Warn if on the wrong branch
+  python3 task.py guard --strict                     # Exit 1 on branch mismatch
   python3 task.py current --source
   python3 task.py finish
   python3 task.py archive add-login
@@ -369,12 +554,12 @@ def main() -> int:
             file=sys.stderr,
         )
         print(
-            "sub-agent-capable platforms and curated by the AI during Phase 1.3.",
+            "sub-agent-capable platforms and curated by the AI during planning when needed.",
             file=sys.stderr,
         )
-        print("See .trellis/workflow.md Phase 1.3 or run:", file=sys.stderr)
+        print("See .trellis/workflow.md planning artifact guidance or run:", file=sys.stderr)
         print(
-            "  python3 ./.trellis/scripts/get_context.py --mode phase --step 1.3",
+            "  python3 ./.trellis/scripts/get_context.py --mode phase --step 1",
             file=sys.stderr,
         )
         print(
@@ -407,7 +592,7 @@ def main() -> int:
     p_add.add_argument("reason", nargs="?", help="Reason for adding")
 
     # validate
-    p_validate = subparsers.add_parser("validate", help="Validate context files")
+    p_validate = subparsers.add_parser("validate", help="Validate task context + planning gate")
     p_validate.add_argument("dir", help="Task directory")
 
     # list-context
@@ -417,6 +602,22 @@ def main() -> int:
     # start
     p_start = subparsers.add_parser("start", help="Set active task")
     p_start.add_argument("dir", help="Task directory")
+
+    # switch
+    p_switch = subparsers.add_parser(
+        "switch", help="Set active task pointer only (no status change)"
+    )
+    p_switch.add_argument("dir", help="Task directory")
+
+    # guard
+    p_guard = subparsers.add_parser(
+        "guard", help="Warn if git branch differs from active task's branch"
+    )
+    p_guard.add_argument(
+        "--strict",
+        action="store_true",
+        help="Exit 1 on mismatch (default: warn and exit 0)",
+    )
 
     # current
     p_current = subparsers.add_parser("current", help="Show active task")
@@ -440,6 +641,26 @@ def main() -> int:
     p_scope = subparsers.add_parser("set-scope", help="Set scope")
     p_scope.add_argument("dir", help="Task directory")
     p_scope.add_argument("scope", help="Scope name")
+
+    # set-strategy
+    p_strategy = subparsers.add_parser("set-strategy", help="Set development strategy")
+    p_strategy.add_argument("dir", help="Task directory")
+    p_strategy.add_argument("--execution", choices=("current-session", "subagent"))
+    p_strategy.add_argument("--git-mode", choices=("branch", "worktree"))
+    p_strategy.add_argument("--development-mode", choices=("default", "tdd"))
+    p_strategy.add_argument("--spec-review", dest="spec_review", choices=("enabled", "disabled"))
+    p_strategy.add_argument("--code-review", dest="code_review", choices=("enabled", "disabled"))
+    p_strategy.add_argument("--architecture-review", dest="architecture_review", choices=("enabled", "disabled"))
+    p_strategy.add_argument("--merge-review", dest="merge_review", choices=("enabled", "disabled"))
+    p_strategy.add_argument("--grill-me", dest="grill_me", choices=("enabled", "disabled"))
+
+    # set-deep-review
+    p_deep = subparsers.add_parser(
+        "set-deep-review", help="Set deep-review ledger state"
+    )
+    p_deep.add_argument("dir", help="Task directory (active or archived)")
+    p_deep.add_argument("state", choices=("pending", "done", "waived"),
+                        help="done is stamped as done@YYYY-MM-DD")
 
     # archive
     p_archive = subparsers.add_parser("archive", help="Archive task")
@@ -477,11 +698,15 @@ def main() -> int:
         "validate": cmd_validate,
         "list-context": cmd_list_context,
         "start": cmd_start,
+        "switch": cmd_switch,
+        "guard": cmd_guard,
         "current": cmd_current,
         "finish": cmd_finish,
         "set-branch": cmd_set_branch,
         "set-base-branch": cmd_set_base_branch,
         "set-scope": cmd_set_scope,
+        "set-strategy": cmd_set_strategy,
+        "set-deep-review": cmd_set_deep_review,
         "archive": cmd_archive,
         "add-subtask": cmd_add_subtask,
         "remove-subtask": cmd_remove_subtask,

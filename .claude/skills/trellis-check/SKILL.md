@@ -16,7 +16,13 @@ git diff --name-only HEAD
 git status
 ```
 
-## Step 2: Read Applicable Specs
+## Step 2: Read Task Artifacts and Applicable Specs
+
+Read the current task artifacts in order:
+
+- `prd.md`
+- `design.md` if present
+- `implement.md` if present
 
 ```bash
 python3 ./.trellis/scripts/get_context.py --mode packages
@@ -58,7 +64,9 @@ Run the project's lint, type-check, and test commands. Fix any failures before p
 
 ## Step 5: Cross-Layer Dimensions (if applicable)
 
-Skip this step if your change is confined to a single layer.
+Skip this step if your change is confined to a single layer. If the project has
+detailed guides, read them for the dimensions you hit:
+`.trellis/spec/guides/cross-layer-thinking-guide.md`, `.trellis/spec/guides/code-reuse-thinking-guide.md`.
 
 ### A. Data Flow (changes touch 3+ layers)
 

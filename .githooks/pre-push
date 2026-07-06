@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# 拦截直推共享基线分支（git-pr-sop：合并必须经 PR）。
+# 启用：git config core.hooksPath .githooks
+# 紧急逃生口：--no-verify（仅限用户明确授权场景，事后在 PR/记录中说明）。
+set -euo pipefail
+
+PROTECTED='^refs/heads/(main|master)$'
+blocked=0
+
+while read -r _local_ref _local_sha remote_ref _remote_sha; do
+  [ -z "${remote_ref:-}" ] && continue
+  if [[ "$remote_ref" =~ $PROTECTED ]]; then
+    echo "✖ 禁止直推共享基线分支: ${remote_ref#refs/heads/}" >&2
+    blocked=1
+  fi
+done
+
+if [ "$blocked" -eq 1 ]; then
+  echo "  共享分支只接受 PR 合并。请推送短生命周期分支并创建 PR：" >&2
+  echo "    git push -u origin <feature-branch>  →  gh pr create --draft --fill" >&2
+  echo "  详见 .trellis/spec/guides/git-pr-sop.md" >&2
+  exit 1
+fi
+exit 0

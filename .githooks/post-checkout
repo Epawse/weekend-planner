@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# 切换分支后软检查 Trellis 活动任务与 git 分支是否一致。
+# 文件级 checkout 不触发；guard 自身缺运行时/缺任务时静默成功。
+set -euo pipefail
+
+branch_checkout="${3:-0}"
+
+if [ "$branch_checkout" != "1" ]; then
+  exit 0
+fi
+
+if [ -f ".trellis/scripts/task.py" ]; then
+  python3 .trellis/scripts/task.py guard 2>/dev/null || true
+fi
+
+exit 0

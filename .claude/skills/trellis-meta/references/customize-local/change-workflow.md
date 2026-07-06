@@ -45,13 +45,15 @@ If the user wants only one platform to avoid sub-agents, first confirm whether t
 
 ## `/trellis:continue` Route Table
 
-`/trellis:continue` resumes a task by deciding which phase step to load next. The decision combines `task.json.status` with the presence of artifacts inside the task directory. The mapping is fixed in the command itself; forks that add custom statuses must extend both the workflow.md tag block and this table.
+`/trellis:continue` resumes a task by deciding which phase step to load next. The decision combines `task.json.status`, artifact presence, and the non-mutating planning gate from `task.py validate`. The mapping is fixed in the command itself; forks that add custom statuses must extend both the workflow.md tag block and this table.
 
 | `status` | Artifact state | Resume at |
 | --- | --- | --- |
 | `planning` | `prd.md` missing | Phase 1.1 (load `trellis-brainstorm`) |
-| `planning` | `prd.md` exists, `implement.jsonl` only has the seed `_example` row | Phase 1.3 (curate JSONL context) |
-| `planning` | `prd.md` exists, `implement.jsonl` curated | Phase 1.4 (run `task.py start`) |
+| `planning` | lightweight task with `prd.md` complete | ask for start review, then run `task.py start` |
+| `planning` | complex task missing `design.md` or `implement.md` | complete missing planning artifacts |
+| `planning` | P0/P1 platform workflow task missing `research/*.md` | Phase 1.2 (write research artifact) |
+| `planning` | planning gate passes | ask for start review, then run `task.py start` |
 | `in_progress` | no implementation in conversation history | Phase 2.1 (`trellis-implement`) |
 | `in_progress` | implementation done, no `trellis-check` run | Phase 2.2 (`trellis-check`) |
 | `in_progress` | check passed | Phase 3.1 (verify quality + spec update) |

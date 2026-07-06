@@ -71,7 +71,6 @@ from .paths import (
     check_developer,
     get_tasks_dir,
     get_workspace_dir,
-    get_active_journal_file,
     count_lines,
     get_current_task,
     get_current_task_abs,

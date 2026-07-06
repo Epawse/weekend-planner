@@ -37,11 +37,6 @@
     ".claude/skills/trellis-meta/references/platform-files/platform-map.md": "ded6751c06f31d0a701d33c9dd69c482a583539ad3ed464aaad9e705f793b212",
     ".claude/skills/trellis-meta/references/platform-files/skills-and-commands.md": "85435eb8bb6921283575bca51268fc534c22fd3ca33782e841ee5c76140ae48f",
     ".claude/skills/trellis-meta/SKILL.md": "942e898a6fd769a93a3ca6f43f9fe0412d0adae011654fd384e9cacbd2af4f34",
-    ".claude/skills/trellis-spec-bootstarp/references/mcp-setup.md": "df542fc8f279edd38046d26a7c8151804b708f57b24d4aa2733cea587a88c65e",
-    ".claude/skills/trellis-spec-bootstarp/references/repository-analysis.md": "0dae98d774f6e34559b9f3442888ac43e3a8af110c37cbefc49ce256986858b6",
-    ".claude/skills/trellis-spec-bootstarp/references/spec-task-planning.md": "ef493d028c3b0807a8a534bb71fb92a68129f273db763ad27ceb464a522e799d",
-    ".claude/skills/trellis-spec-bootstarp/references/spec-writing.md": "e9800fe9ed4a4cd87062ea1829cf2caa8d170ec15e141678a6a30e74c497f47d",
-    ".claude/skills/trellis-spec-bootstarp/SKILL.md": "81f400092b21392161e7d9dfa9111c9be36c81bc8641d252ed28e08373449ac0",
     "AGENTS.md": "6cacfe99748b435d0660c2463c697bc323d53798aecf3492283ca8eac1b29682",
     ".trellis/config.yaml": "5c9207418cecc390e9d86d589b4183b831f76697d92fb42fefd5221cd8772e51",
     ".trellis/scripts/__init__.py": "1242be5b972094c2e141aecbe81a4efd478f6534e3d5e28306374e6a18fcf46c",
@@ -71,7 +66,6 @@
     ".trellis/scripts/get_developer.py": "84c27076323c3e0f2c9c8ed16e8aa865e225d902a187c37e20ee1a46e7142d8f",
     ".trellis/scripts/hooks/linear_sync.py": "e09cc4ce4699aada908808718698f33f705a3edf55c4dcf8f777ad892f80ca79",
     ".trellis/scripts/init_developer.py": "f9e6c0d882406e81c8cd6b1c5abb204b0befc0069ff89cf650cd536a80f8c60e",
-    ".trellis/scripts/task.py": "40abdd46f5c2b6837610429a38eef50f1fc783fb1852dc4f52a891205e42ab04",
-    ".trellis/workflow.md": "f4b8a6f89017f62071986d6d36cc32c4c7f01fe6f023f0fd9311eddc57d8c94f"
+    ".trellis/scripts/task.py": "40abdd46f5c2b6837610429a38eef50f1fc783fb1852dc4f52a891205e42ab04"
   }
 }

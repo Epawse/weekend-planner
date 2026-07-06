@@ -19,7 +19,6 @@ from .paths import (
     DIR_WORKSPACE,
     DIR_TASKS,
     FILE_DEVELOPER,
-    FILE_JOURNAL_PREFIX,
     get_repo_root,
     get_developer,
     check_developer,
@@ -36,7 +35,8 @@ def init_developer(name: str, repo_root: Path | None = None) -> bool:
     Creates:
         - .trellis/.developer file with developer info
         - .trellis/workspace/<name>/ directory structure
-        - Initial journal file and index.md
+        - index.md (journal files are retired; sessions are one-line
+          index entries via add_session.py)
 
     Args:
         name: Developer name.
@@ -73,37 +73,19 @@ def init_developer(name: str, repo_root: Path | None = None) -> bool:
         print(f"Error: Failed to create workspace directory: {e}", file=sys.stderr)
         return False
 
-    # Create initial journal file
-    journal_file = workspace_dir / f"{FILE_JOURNAL_PREFIX}1.md"
-    if not journal_file.exists():
-        today = datetime.now().strftime("%Y-%m-%d")
-        journal_content = f"""# Journal - {name} (Part 1)
-
-> AI development session journal
-> Started: {today}
-
----
-
-"""
-        try:
-            journal_file.write_text(journal_content, encoding="utf-8")
-        except (OSError, IOError) as e:
-            print(f"Error: Failed to create journal file: {e}", file=sys.stderr)
-            return False
-
     # Create index.md with markers for auto-update
     index_file = workspace_dir / "index.md"
     if not index_file.exists():
         index_content = f"""# Workspace Index - {name}
 
-> Journal tracking for AI development sessions.
+> Session tracking for AI development sessions (one-line entries; journal retired).
 
 ---
 
 ## Current Status
 
 <!-- @@@auto:current-status -->
-- **Active File**: `journal-1.md`
+- **Active File**: - (journal retired)
 - **Total Sessions**: 0
 - **Last Active**: -
 <!-- @@@/auto:current-status -->
@@ -115,7 +97,6 @@ def init_developer(name: str, repo_root: Path | None = None) -> bool:
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~0 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -131,8 +112,8 @@ def init_developer(name: str, repo_root: Path | None = None) -> bool:
 
 ## Notes
 
-- Sessions are appended to journal files
-- New journal file created when current exceeds 2000 lines
+- Sessions are one-line entries in Session History (journal files retired;
+  legacy journal-N.md files stay on disk as read-only history)
 - Use `add_session.py` to record sessions
 """
         try:

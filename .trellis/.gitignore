@@ -1,32 +1,12 @@
-# Developer identity (local only)
-.developer
-
-# Current task pointer (each dev works on different task)
-.current-task
-
-# Session/window scoped runtime state
+# Trellis-local noise (skeleton-managed; scoped to .trellis/ only).
+# The project's own root .gitignore stays project-owned — this file only
+# keeps trellis runtime/cache state out of git for freshly rendered repos.
+__pycache__/
+*.pyc
 .runtime/
-
-# Ralph Loop state file
-.ralph-state.json
-
-# Agent runtime files
-.agents/
-.agent-log
+.developer
+.current-task
 .session-id
-
-# Task directory runtime files
+.ralph-state.json
 .plan-log
-
-# Atomic update temp files
-*.tmp
-
-# Update backup directories
-.backup-*
-
-# Conflict resolution temp files
-*.new
-
-# Python cache
-**/__pycache__/
-**/*.pyc
+.backup-*/

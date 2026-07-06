@@ -7,7 +7,6 @@ Provides:
     get_developer          - Get developer name
     get_workspace_dir      - Get developer workspace directory
     get_tasks_dir          - Get tasks directory
-    get_active_journal_file - Get current journal file
 """
 
 from __future__ import annotations
@@ -147,43 +146,8 @@ def get_workspace_dir(repo_root: Path | None = None) -> Path | None:
 
 
 # =============================================================================
-# Journal File
+# File Utilities
 # =============================================================================
-
-def get_active_journal_file(repo_root: Path | None = None) -> Path | None:
-    """Get the current active journal file.
-
-    Args:
-        repo_root: Repository root path. Defaults to auto-detected.
-
-    Returns:
-        Path to active journal file or None if not found.
-    """
-    if repo_root is None:
-        repo_root = get_repo_root()
-
-    workspace_dir = get_workspace_dir(repo_root)
-    if workspace_dir is None or not workspace_dir.is_dir():
-        return None
-
-    latest: Path | None = None
-    highest = 0
-
-    for f in workspace_dir.glob(f"{FILE_JOURNAL_PREFIX}*.md"):
-        if not f.is_file():
-            continue
-
-        # Extract number from filename
-        name = f.stem  # e.g., "journal-1"
-        match = re.search(r"(\d+)$", name)
-        if match:
-            num = int(match.group(1))
-            if num > highest:
-                highest = num
-                latest = f
-
-    return latest
-
 
 def count_lines(file_path: Path) -> int:
     """Count lines in a file.
@@ -443,5 +407,4 @@ if __name__ == "__main__":
     print(f"Developer: {get_developer(repo)}")
     print(f"Tasks dir: {get_tasks_dir(repo)}")
     print(f"Workspace dir: {get_workspace_dir(repo)}")
-    print(f"Journal file: {get_active_journal_file(repo)}")
     print(f"Current task: {get_current_task(repo)}")

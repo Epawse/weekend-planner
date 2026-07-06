@@ -1,6 +1,6 @@
 # Finish Work
 
-Wrap up the current session: archive the active task (and any other completed-but-unarchived tasks the user wants to clean up) and record the session journal. Code commits are NOT done here — those happen in workflow Phase 3.4 before you invoke this command.
+Wrap up the current session: archive the active task (and any other completed-but-unarchived tasks the user wants to clean up) and record a one-line session-index entry. Code commits are NOT done here — those happen in workflow Phase 3.4 before you invoke this command.
 
 ## Step 1: Survey current state
 
@@ -52,15 +52,14 @@ At minimum: the current active task (if any). Plus any extra tasks the user conf
 
 If there is no active task and the user did not confirm any cleanup archives, skip this step.
 
-## Step 4: Record session journal
+## Step 4: Record session index
 
 ```bash
 python3 ./.trellis/scripts/add_session.py \
   --title "Session Title" \
-  --commit "hash1,hash2" \
-  --summary "Brief summary"
+  --commit "hash1,hash2"
 ```
 
-Use the work-commit hashes produced in Phase 3.4 (visible in Step 1's `Recent commits` list, or via `git log --oneline`) for `--commit`. Do not include the archive commit hashes from Step 3. This produces a `chore: record journal` commit.
+This writes ONE line into `workspace/<dev>/index.md` (# / Date / Title / Commits / Branch). Journal files are retired — durable narrative belongs in PR descriptions and task archives, deep archaeology is `trellis mem`. Use the work-commit hashes produced in Phase 3.4 (visible in Step 1's `Recent commits` list, or via `git log --oneline`) for `--commit`. Do not include the archive commit hashes from Step 3. This produces a `chore: record session index` commit.
 
-Final git log order: `<work commits from 3.4>` → `chore(task): archive ...` (one or more) → `chore: record journal`.
+Final git log order: `<work commits from 3.4>` → `chore(task): archive ...` (one or more) → `chore: record session index`.

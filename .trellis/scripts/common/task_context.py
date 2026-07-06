@@ -4,15 +4,15 @@ Task JSONL context management.
 
 Provides:
     cmd_add_context   - Add entry to JSONL context file
-    cmd_validate      - Validate JSONL context files
+    cmd_validate      - Validate JSONL context files and planning gate
     cmd_list_context  - List JSONL context entries
 
 Note:
     ``cmd_init_context`` was removed in v0.5.0-beta.12. JSONL context files
     are now seeded at ``task.py create`` time with a self-describing
-    ``_example`` line; the AI agent curates real entries during Phase 1.3 of
-    the workflow. See ``.trellis/workflow.md`` Phase 1.3 for the current
-    instructions.
+    ``_example`` line; the AI agent curates real entries during planning when
+    the task needs sub-agent/spec context. See ``.trellis/workflow.md`` for the
+    current planning artifact contract.
 """
 
 from __future__ import annotations
@@ -23,6 +23,7 @@ from pathlib import Path
 
 from .log import Colors, colored
 from .paths import get_repo_root
+from .planning_gate import evaluate_planning_gate, format_planning_gate_result
 from .task_utils import resolve_task_dir
 
 
@@ -85,7 +86,7 @@ def cmd_add_context(args: argparse.Namespace) -> int:
 # =============================================================================
 
 def cmd_validate(args: argparse.Namespace) -> int:
-    """Validate JSONL context files."""
+    """Validate JSONL context files and planning gate."""
     repo_root = get_repo_root()
     target_dir = resolve_task_dir(args.dir, repo_root)
 
@@ -102,6 +103,14 @@ def cmd_validate(args: argparse.Namespace) -> int:
         jsonl_file = target_dir / jsonl_name
         errors = _validate_jsonl(jsonl_file, repo_root)
         total_errors += errors
+
+    gate_result = evaluate_planning_gate(target_dir, repo_root)
+    print()
+    if gate_result.ok:
+        print(f"  {colored(format_planning_gate_result(gate_result), Colors.GREEN)}")
+    else:
+        print(f"  {colored(format_planning_gate_result(gate_result), Colors.RED)}")
+        total_errors += len(gate_result.missing)
 
     print()
     if total_errors == 0:

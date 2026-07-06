@@ -128,6 +128,7 @@ _SUBAGENT_CONFIG_DIRS: tuple[str, ...] = (
     ".factory",   # Factory Droid
     ".github/copilot",
     ".pi",        # Pi Agent
+    ".trae",      # Trae IDE
 )
 
 _SEED_EXAMPLE = (
@@ -136,6 +137,60 @@ _SEED_EXAMPLE = (
     "Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. "
     "Delete this line once real entries are added."
 )
+
+_STRATEGY_CONTRACT = "explicit-selection-v1"
+_REVIEW_GATE_KEYS = ("spec_review", "code_review", "architecture_review", "merge_review")
+
+# Deep-review ledger states for meta.verification.deep_review. Mechanical
+# gates (tests/type-check/CI) are always synchronous; deep_review records
+# whether the task has had (or waived) its asynchronous review-sweep pass.
+# "done" is stamped as "done@YYYY-MM-DD" at write time.
+_DEEP_REVIEW_STATES = ("pending", "done", "waived")
+
+
+def _default_development_strategy() -> dict:
+    """Return the common planning strategy contract for new tasks."""
+    return {
+        "contract": _STRATEGY_CONTRACT,
+        "execution": None,
+        "git_mode": None,
+        "development_mode": "default",
+        "review_gates": {key: None for key in _REVIEW_GATE_KEYS},
+        "optional_enhancements": {"grill_me": "disabled"},
+    }
+
+
+def _ensure_development_strategy(data: dict) -> dict:
+    """Backfill and return ``meta.development_strategy`` without dropping edits."""
+    meta = data.setdefault("meta", {})
+    if not isinstance(meta, dict):
+        meta = {}
+        data["meta"] = meta
+
+    strategy = meta.setdefault("development_strategy", _default_development_strategy())
+    if not isinstance(strategy, dict):
+        strategy = _default_development_strategy()
+        meta["development_strategy"] = strategy
+
+    defaults = _default_development_strategy()
+    for key, value in defaults.items():
+        if key == "review_gates":
+            gates = strategy.setdefault("review_gates", {})
+            if not isinstance(gates, dict):
+                gates = {}
+                strategy["review_gates"] = gates
+            for gate_key, gate_default in value.items():
+                gates.setdefault(gate_key, gate_default)
+        elif key == "optional_enhancements":
+            optional = strategy.setdefault("optional_enhancements", {})
+            if not isinstance(optional, dict):
+                optional = {}
+                strategy["optional_enhancements"] = optional
+            for opt_key, opt_default in value.items():
+                optional.setdefault(opt_key, opt_default)
+        else:
+            strategy.setdefault(key, value)
+    return strategy
 
 
 def _has_subagent_platform(repo_root: Path) -> bool:
@@ -162,9 +217,70 @@ def _write_seed_jsonl(path: Path) -> None:
     path.write_text(json.dumps(seed, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
+def _default_prd_content(title: str, description: str | None = None) -> str:
+    """Return the default PRD skeleton created with every task."""
+    goal = (description or "").strip() or "TBD."
+    heading = title.strip() or "Untitled task"
+    return f"""# {heading}
+
+## Goal
+
+{goal}
+
+## Requirements
+
+- TBD
+
+## Acceptance Criteria
+
+- [ ] TBD
+
+## Development Strategy
+
+- Contract: `{_STRATEGY_CONTRACT}`
+- Execution: TBD (`current-session` | `subagent`)
+- Git mode: TBD (`branch` | `worktree`)
+- Development mode: `default` (`default` | `tdd`)
+- Review gates:
+  - spec-review: TBD (`enabled` | `disabled`)
+  - code-review: TBD (`enabled` | `disabled`)
+  - architecture-review: TBD (`enabled` | `disabled`)
+  - merge-review: TBD (`enabled` | `disabled`)
+- Optional grill-me: `disabled` unless explicitly selected
+
+## Notes
+
+- Keep `prd.md` focused on requirements, constraints, and acceptance criteria.
+- Fill the Development Strategy section before `task.py start`; the contract is common, while individual gates are explicitly enabled or disabled per task.
+- Lightweight tasks can remain PRD-only.
+- For complex tasks, add `design.md` for technical design and `implement.md` for execution planning before `task.py start`.
+"""
+
+
 # =============================================================================
 # Command: create
 # =============================================================================
+
+def _resolve_default_branch(repo_root: Path) -> str:
+    """Resolve the repository's default (PR target) branch.
+
+    Prefers the branch that ``origin/HEAD`` points at, then a local
+    ``main``/``master``, falling back to ``"main"``. Never raises: a detached
+    HEAD or a repo without an ``origin`` remote degrades to the fallback.
+    """
+    code, out, _ = run_git(
+        ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"],
+        cwd=repo_root,
+    )
+    if code == 0 and out.strip():
+        # e.g. "origin/main" -> "main"
+        return out.strip().split("/", 1)[-1]
+    for candidate in ("main", "master"):
+        code, _, _ = run_git(["rev-parse", "--verify", "--quiet", candidate], cwd=repo_root)
+        if code == 0:
+            return candidate
+    return "main"
+
 
 def cmd_create(args: argparse.Namespace) -> int:
     """Create a new task."""
@@ -231,9 +347,13 @@ def cmd_create(args: argparse.Namespace) -> int:
 
     today = datetime.now().strftime("%Y-%m-%d")
 
-    # Record current branch as base_branch (PR target)
+    # Record the current work branch, and resolve the PR target (base) branch
+    # separately. The base must be the repo default branch, not whatever branch
+    # happens to be checked out at create time (the common "switch to the task
+    # branch, then create" flow would otherwise record the task branch as base).
     _, branch_out, _ = run_git(["branch", "--show-current"], cwd=repo_root)
-    current_branch = branch_out.strip() or "main"
+    current_branch = branch_out.strip()
+    base_branch = _resolve_default_branch(repo_root)
 
     task_data = {
         "id": slug,
@@ -249,8 +369,8 @@ def cmd_create(args: argparse.Namespace) -> int:
         "assignee": assignee,
         "createdAt": today,
         "completedAt": None,
-        "branch": None,
-        "base_branch": current_branch,
+        "branch": current_branch or None,
+        "base_branch": base_branch,
         "worktree_path": None,
         "commit": None,
         "pr_url": None,
@@ -259,13 +379,23 @@ def cmd_create(args: argparse.Namespace) -> int:
         "parent": None,
         "relatedFiles": [],
         "notes": "",
-        "meta": {},
+        "meta": {
+            "development_strategy": _default_development_strategy(),
+            "verification": {"deep_review": "pending"},
+        },
     }
 
     write_json(task_json_path, task_data)
 
+    prd_path = task_dir / "prd.md"
+    if not prd_path.exists():
+        prd_path.write_text(
+            _default_prd_content(args.title, args.description),
+            encoding="utf-8",
+        )
+
     # Seed implement.jsonl / check.jsonl for sub-agent-capable platforms.
-    # Agent curates real entries in Phase 1.3 (see .trellis/workflow.md).
+    # Agent curates real entries during planning when the task needs them.
     # Agent-less platforms (Kilo / Antigravity / Windsurf) skip this — they
     # load specs via the trellis-before-dev skill instead of JSONL.
     seeded_jsonl = False
@@ -303,30 +433,38 @@ def cmd_create(args: argparse.Namespace) -> int:
     # outside an AI session) — the task is still created, the user can run
     # task.py start later. Pointer is session-scoped so this never affects
     # other AI sessions.
-    try:
-        from .active_task import resolve_context_key, set_active_task
-        if resolve_context_key():
-            try:
-                rel_dir = task_dir.relative_to(repo_root).as_posix()
-            except ValueError:
-                rel_dir = str(task_dir)
-            set_active_task(rel_dir, repo_root)
-    except Exception:
-        pass
+    #
+    # M1: skip pointer hijack for child tasks (--parent). Batch-creating a
+    # parent + several children would otherwise drag the session pointer onto
+    # the last-created child, so the planning session that's still parked at
+    # the parent's review gate ends up pointing at the wrong task (and any
+    # single-session fallback in a later window inherits that wrong pointer).
+    # Keeping the pointer on the parent is the correct semantics; the human
+    # runs `task.py switch`/`start` on the child they actually execute next.
+    if not args.parent:
+        try:
+            from .active_task import resolve_context_key, set_active_task
+            if resolve_context_key():
+                try:
+                    rel_dir = task_dir.relative_to(repo_root).as_posix()
+                except ValueError:
+                    rel_dir = str(task_dir)
+                set_active_task(rel_dir, repo_root)
+        except Exception:
+            pass
 
     print(colored(f"Created task: {dir_name}", Colors.GREEN), file=sys.stderr)
     print("", file=sys.stderr)
     print(colored("Next steps:", Colors.BLUE), file=sys.stderr)
-    print("  1. Create prd.md with requirements", file=sys.stderr)
+    print("  - Fill prd.md with requirements and acceptance criteria", file=sys.stderr)
+    print("  - Lightweight task: PRD-only is valid", file=sys.stderr)
+    print("  - Complex task: add design.md and implement.md before task.py start", file=sys.stderr)
     if seeded_jsonl:
         print(
-            "  2. Curate implement.jsonl / check.jsonl (spec + research files only — "
-            "see .trellis/workflow.md Phase 1.3)",
+            "  - Curate implement.jsonl / check.jsonl as spec/research manifests when sub-agents need context",
             file=sys.stderr,
         )
-        print("  3. Run: python3 task.py start <dir>", file=sys.stderr)
-    else:
-        print("  2. Run: python3 task.py start <dir>", file=sys.stderr)
+    print("  - Use /trellis:continue or phase context to decide the next step", file=sys.stderr)
     print("", file=sys.stderr)
 
     # Output relative path for script chaining
@@ -410,7 +548,16 @@ def cmd_archive(args: argparse.Namespace) -> int:
 
         # Auto-commit unless --no-commit
         if not getattr(args, "no_commit", False):
-            _auto_commit_archive(dir_name, repo_root, modified_children)
+            if not _auto_commit_archive(dir_name, repo_root, modified_children):
+                print(
+                    colored(
+                        "Archive moved on disk, but git auto-commit did not complete. "
+                        "Resolve `git status` before continuing.",
+                        Colors.RED,
+                    ),
+                    file=sys.stderr,
+                )
+                return 1
 
         # Return the archive path
         print(f"{DIR_WORKFLOW}/{DIR_TASKS}/{DIR_ARCHIVE}/{year_month}/{dir_name}")
@@ -427,7 +574,7 @@ def _auto_commit_archive(
     task_name: str,
     repo_root: Path,
     modified_children: list[str] | None = None,
-) -> None:
+) -> bool:
     """Stage Trellis-owned task paths and commit after archive.
 
     Scoped narrowly to the archived task's source + destination paths
@@ -449,14 +596,21 @@ def _auto_commit_archive(
             "[OK] session_auto_commit: false — skipping git stage/commit.",
             file=sys.stderr,
         )
-        return
+        return True
+
+    source_rel = f"{DIR_WORKFLOW}/{DIR_TASKS}/{task_name}"
+    rc, tracked_out, _ = run_git(
+        ["ls-files", "--", source_rel],
+        cwd=repo_root,
+    )
+    source_was_tracked = rc == 0 and bool(tracked_out.strip())
 
     paths = safe_archive_paths_to_add(
         repo_root, task_name=task_name, modified_children=modified_children
     )
     if not paths:
         print("[OK] No task changes to commit.", file=sys.stderr)
-        return
+        return True
 
     success, _, err = safe_git_add(paths, repo_root)
     if not success:
@@ -467,7 +621,7 @@ def _auto_commit_archive(
                 f"[WARN] git add failed: {err.strip() if err else 'unknown error'}",
                 file=sys.stderr,
             )
-        return
+        return not source_was_tracked
 
     # Belt-and-suspenders for the phantom-delete bug: `safe_git_add` uses
     # `git add` (no -A) which only stages additions/modifications. The
@@ -478,7 +632,6 @@ def _auto_commit_archive(
     #
     # `--ignore-unmatch` makes this a no-op when the task was never tracked
     # (e.g. archiving a task that lived only in working tree).
-    source_rel = f"{DIR_WORKFLOW}/{DIR_TASKS}/{task_name}"
     run_git(
         ["rm", "-r", "--cached", "--ignore-unmatch", "--", source_rel],
         cwd=repo_root,
@@ -490,14 +643,16 @@ def _auto_commit_archive(
     )
     if rc == 0:
         print("[OK] No task changes to commit.", file=sys.stderr)
-        return
+        return True
 
     commit_msg = f"chore(task): archive {task_name}"
     rc, _, err = run_git(["commit", "-m", commit_msg], cwd=repo_root)
     if rc == 0:
         print(f"[OK] Auto-committed: {commit_msg}", file=sys.stderr)
+        return True
     else:
         print(f"[WARN] Auto-commit failed: {err.strip()}", file=sys.stderr)
+        return not source_was_tracked
 
 
 # =============================================================================
@@ -694,4 +849,88 @@ def cmd_set_scope(args: argparse.Namespace) -> int:
     write_json(task_json, data)
 
     print(colored(f"✓ Scope set to: {scope}", Colors.GREEN))
+    return 0
+
+
+# =============================================================================
+# Command: set-strategy
+# =============================================================================
+
+def cmd_set_strategy(args: argparse.Namespace) -> int:
+    """Set common development strategy metadata for a task."""
+    repo_root = get_repo_root()
+    target_dir = resolve_task_dir(args.dir, repo_root)
+    task_json = target_dir / FILE_TASK_JSON
+    if not task_json.is_file():
+        print(colored(f"Error: task.json not found at {target_dir}", Colors.RED))
+        return 1
+
+    data = read_json(task_json)
+    if not data:
+        return 1
+
+    strategy = _ensure_development_strategy(data)
+
+    if args.execution is not None:
+        strategy["execution"] = args.execution
+    if args.git_mode is not None:
+        strategy["git_mode"] = args.git_mode
+    if args.development_mode is not None:
+        strategy["development_mode"] = args.development_mode
+
+    gates = strategy.setdefault("review_gates", {})
+    for key in _REVIEW_GATE_KEYS:
+        value = getattr(args, key, None)
+        if value is not None:
+            gates[key] = value
+
+    optional = strategy.setdefault("optional_enhancements", {})
+    if args.grill_me is not None:
+        optional["grill_me"] = args.grill_me
+
+    write_json(task_json, data)
+
+    print(colored("✓ Development strategy updated", Colors.GREEN))
+    print(json.dumps(strategy, ensure_ascii=False, indent=2))
+    return 0
+
+
+# =============================================================================
+# Command: set-deep-review
+# =============================================================================
+
+def cmd_set_deep_review(args: argparse.Namespace) -> int:
+    """Set meta.verification.deep_review on a task (active or archived)."""
+    repo_root = get_repo_root()
+    target_dir = resolve_task_dir(args.dir, repo_root)
+    state = args.state
+
+    if state not in _DEEP_REVIEW_STATES:
+        print(colored(f"Error: state must be one of {_DEEP_REVIEW_STATES}", Colors.RED))
+        return 1
+
+    task_json = target_dir / FILE_TASK_JSON
+    if not task_json.is_file():
+        print(colored(f"Error: task.json not found at {target_dir}", Colors.RED))
+        return 1
+
+    data = read_json(task_json)
+    if not data:
+        return 1
+
+    meta = data.setdefault("meta", {})
+    if not isinstance(meta, dict):
+        meta = {}
+        data["meta"] = meta
+    verification = meta.setdefault("verification", {})
+    if not isinstance(verification, dict):
+        verification = {}
+        meta["verification"] = verification
+
+    if state == "done":
+        state = f"done@{datetime.now().strftime('%Y-%m-%d')}"
+    verification["deep_review"] = state
+    write_json(task_json, data)
+
+    print(colored(f"✓ deep_review set to: {state}", Colors.GREEN))
     return 0

@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# 禁止在共享基线分支上本地提交（git-pr-sop：一切改动走短生命周期分支 + PR）。
+# 与 pre-push 成对：pre-push 拦推送，本钩子把闸前移到 commit。
+set -euo pipefail
+
+branch=$(git symbolic-ref --quiet --short HEAD || echo "")
+case "$branch" in
+  main|master)
+    echo "✖ 禁止在共享基线分支 ($branch) 上直接提交。" >&2
+    echo "  先切短生命周期分支：git switch -c <type>/<topic>   （未暂存的改动会随身带过去）" >&2
+    echo "  详见 .trellis/spec/guides/git-pr-sop.md" >&2
+    exit 1 ;;
+esac
+
+# 任务↔分支一致性软提示：有 Trellis 运行时则调 guard（仅警告不拦截）；
+# 无运行时/脚本缺失静默跳过。
+if [ -f ".trellis/scripts/task.py" ]; then
+  python3 .trellis/scripts/task.py guard 2>/dev/null || true
+fi
+
+exit 0

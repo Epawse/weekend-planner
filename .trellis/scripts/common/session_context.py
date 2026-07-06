@@ -20,6 +20,7 @@ import subprocess
 from pathlib import Path
 
 from .active_task import resolve_context_key
+from .backlog_context import get_backlog_armed_line
 from .config import get_git_packages
 from .git import run_git
 from .packages_context import get_packages_section
@@ -30,8 +31,6 @@ from .paths import (
     DIR_TASKS,
     DIR_WORKFLOW,
     DIR_WORKSPACE,
-    count_lines,
-    get_active_journal_file,
     get_current_task,
     get_current_task_source,
     get_developer,
@@ -412,7 +411,7 @@ def _get_update_hint(repo_root: Path) -> str | None:
 
     return (
         f"Trellis update available: {current_version} -> {latest_version}, "
-        f"run npm install -g {_PACKAGE_NAME}@latest"
+        "run trellis upgrade"
     )
 
 
@@ -434,15 +433,6 @@ def get_context_json(repo_root: Path | None = None) -> dict:
 
     developer = get_developer(repo_root)
     tasks_dir = get_tasks_dir(repo_root)
-    journal_file = get_active_journal_file(repo_root)
-
-    journal_lines = 0
-    journal_relative = ""
-    if journal_file and developer:
-        journal_lines = count_lines(journal_file)
-        journal_relative = (
-            f"{DIR_WORKFLOW}/{DIR_WORKSPACE}/{developer}/{journal_file.name}"
-        )
 
     root_git_info = _collect_root_git_info(repo_root)
 
@@ -477,10 +467,11 @@ def get_context_json(repo_root: Path | None = None) -> dict:
             "active": tasks,
             "directory": f"{DIR_WORKFLOW}/{DIR_TASKS}",
         },
-        "journal": {
-            "file": journal_relative,
-            "lines": journal_lines,
-            "nearLimit": journal_lines > 1800,
+        "sessionIndex": {
+            "file": (
+                f"{DIR_WORKFLOW}/{DIR_WORKSPACE}/{developer}/index.md"
+                if developer else ""
+            ),
         },
     }
 
@@ -575,6 +566,14 @@ def get_context_text(repo_root: Path | None = None) -> str:
         lines.append("(none)")
     lines.append("")
 
+    # BACKLOG armed items (M6) — only injected when docs/BACKLOG.md has a
+    # non-empty「触发已满足」section. Missing file / section / rows → no output.
+    backlog_armed = get_backlog_armed_line(repo_root)
+    if backlog_armed:
+        lines.append("## BACKLOG (armed)")
+        lines.append(backlog_armed)
+        lines.append("")
+
     # Active tasks
     lines.append("## ACTIVE TASKS")
     tasks_dir = get_tasks_dir(repo_root)
@@ -618,18 +617,9 @@ def get_context_text(repo_root: Path | None = None) -> str:
         lines.append("(no tasks assigned to you)")
     lines.append("")
 
-    # Journal file
-    lines.append("## JOURNAL FILE")
-    journal_file = get_active_journal_file(repo_root)
-    if journal_file:
-        journal_lines = count_lines(journal_file)
-        relative = f"{DIR_WORKFLOW}/{DIR_WORKSPACE}/{developer}/{journal_file.name}"
-        lines.append(f"Active file: {relative}")
-        lines.append(f"Line count: {journal_lines} / 2000")
-        if journal_lines > 1800:
-            lines.append("[!] WARNING: Approaching 2000 line limit!")
-    else:
-        lines.append("No journal file found")
+    # Session index (journal files retired — one-line history in index.md)
+    lines.append("## SESSION INDEX")
+    lines.append(f"Index: {DIR_WORKFLOW}/{DIR_WORKSPACE}/{developer}/index.md")
     lines.append("")
 
     # Packages
