@@ -1,0 +1,33 @@
+name: Setup pnpm
+description: >-
+  Shared CI setup: enable corepack, activate the pinned pnpm, and install
+  dependencies with a frozen lockfile (retrying on transient registry flakes).
+  Extracted so every pnpm-backed job in ci.yml stays in lockstep instead of
+  copy-pasting the corepack+install steps. Non-pnpm stack? Swap this for a
+  setup-go / setup-python composite (or delete it) and update ci.yml's `uses:`.
+  Proven on ai-console + the WDT repos (ci-layering B2/B3, 2026-07-06).
+#
+# On a self-hosted runner: corepack (not pnpm/action-setup) avoids the GitHub
+# releases download that hangs on a restricted network, and keep the pnpm store
+# on the SAME filesystem as the checkout so `install` hard-links instead of
+# copying (9p cross-fs demotes hard-links to full copies — the container-job
+# volume mount + npm_config_store_dir pattern in network-homelab/actions-runners.md
+# exists for exactly this). Drop `setup-node`'s `cache: pnpm` there — the local
+# store already persists.
+inputs:
+  pnpm-version:
+    description: pnpm version to activate via corepack. Match your package.json packageManager pin.
+    required: false
+    default: "10.17.0"
+runs:
+  using: composite
+  steps:
+    - run: corepack enable && corepack prepare pnpm@${{ inputs.pnpm-version }} --activate
+      shell: bash
+    - run: |
+        for i in 1 2 3; do
+          pnpm install --frozen-lockfile && break
+          if [ $i -eq 3 ]; then exit 1; fi
+          sleep 15
+        done
+      shell: bash

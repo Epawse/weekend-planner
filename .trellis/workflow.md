@@ -134,17 +134,14 @@ Phase 3: Finish  → verify, update spec, commit, and wrap up
 - User approval to create a task is not approval to start implementation. Planning still happens first.
 - Greenfield UI（新项目或换设计语言级的方向变更）：planning 之前先过 `trellis-prototype` 原型门——≥3 个分歧风格原型 → 用户冻结一稿（`prototypes/DECISION.md`）→ 冻结稿作为 PRD/design 的设计输入。纯后端或设计体系内增量改动不适用。
 
-### Model / Effort Routing（开局装载，形态切换时调整）
+### Model / Effort Routing（短注入，派发时执行）
 
-按任务形态选主控模型与推理档位，而非固定一档跑全场：
+本节只放会影响当次选择的默认值；事故依据和历史裁决放 `PROJECT-MEMORY` / friction 台账，不在启动面复述。
 
-- **规划 / 设计 / 策展 / 审计** → Fable 5 + `high`。升 `xhigh` 的触发器：跨文件矛盾排查、深度 debug、架构验证类硬结（或主控保持 `high`，把硬结派给 `xhigh` 验证子代理）。`max` 仅当评测证明 `xhigh` 仍有余量。
-- **git / 安全相邻的长跑执行**（大扫除、批量修复、安全审计）→ Opus 4.8 + `xhigh` 起手。Fable 分类器在此形态高频误拦，拦截自动回退 Opus 还照扣 Fable 额度——直接 Opus 起手。审计含安全措辞的材料时摘要化读取，勿整段回灌；被硬拦不要反复"继续"，切模型再试。
-- **scope 清晰的机械脏活 / 独立第二视角** → Codex（GPT-5.5），默认 `high`（2026-07-06 用户拍板：high 档实测质量已足）；升 `xhigh` 仅限两类触发：安全相邻审计、或 high 档一次未打穿的硬结复审。执行力强但欠约束时抄最快路径——只在 gates/hooks 齐备的仓里放行（supersede 07-05 marketplace #18 立节时的"日常 high／复杂 xhigh"分档；science 侧 zh-research 的 GPT-5.5 xhigh 不受本条影响）。
-- **前端 / UI / 视觉类任务（硬规则，2026-07-05 用户拍板）**：一律 Claude 系（Fable 5，长跑或安全相邻退 Opus 4.8）执行，**禁派 GPT-5.5**——实测其前端产出质量差且无 taste。Codex 在前端仓的合法角色仅剩纯逻辑层机械修改与只读 review；凡触 UI/样式/交互/视觉一律 Claude。
-- **派发即选型（硬规则）**：优先 typed dispatch——agent 类型定义里已钉模型（`trellis-research` = Sonnet 侦查档；implement/check/review gates 各有 pinned），选对类型 = 选对模型，无需查表。untyped 或 pinless 类型（`claude`/`general-purpose`——类型不带模型钉扎）派发必须显式带 `model`：bounded 机械子任务（侦查、测试、样板、格式化）绑 `sonnet` + effort **`xhigh`**，重活/长程子代理绑 `opus` + effort **`xhigh`**（2026-07-06 用户拍板：sonnet/opus 的 xhigh 档是子代理最优，往下档位质量塌陷——supersede 旧 medium/low 降档条款）。`dispatch-guard` hook 在派发时刻执法：unrouted 派发（无类型且无显式 model）注入提醒，120s 内第 3 次直接 deny——三代理同时继承主控档撞死配额（2026-07-05）的疫苗。
-- **review gate 档位**：同步 gate 的 reviewer 一律 `xhigh`（2026-07-06 用户拍板 supersede 07-05"high 不降质"数据点——opus reviewer 的 xhigh 才是质量档）；异步 `trellis-review-sweep` 同 `xhigh`。
-- 本节模型名与档位基于 2026-07 实测与官方口径；新一代 SOTA 模型上线时按出生证/减法审计规则复审本节，勿让过时限制拖住强模型。
+- **主控**：默认 Fable/Claude `high`；git、安全相邻、长跑执行用 Opus `xhigh` 起手；前端/UI/视觉仍用 Claude 系；Codex 只做 scope 清晰的机械工作或独立第二视角，默认 `high`，安全相邻或 hard retry 再升档。
+- **Subagent**：优先 typed Trellis agent（模型已在 agent 定义里钉住）。pinless/untyped（`claude` / `general-purpose` / `Explore`）必须显式写 `model` + effort，禁止 inherit：bounded/机械侦查用 `sonnet` + `xhigh`，重活/长程/gate reviewer 用 `opus` + `xhigh`。
+- **Review gate**：同步 gate 按 `trellis-review-gate` 协议执行，默认 `high`，只在安全相邻或一次未打穿的硬结复审升 `xhigh`；merge-review 机械项默认走 `trellis_ship preflight`，不另派 agent。
+- **CI/长跑**：派出去就等到终态（`gh run watch --exit-status` 或单条轮询），不要以"等通知"结束回合。
 
 ### Planning Artifacts
 

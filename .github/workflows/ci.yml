@@ -1,0 +1,136 @@
+# Product CI — the ONE workflow that carries every product gate.
+#
+# Born-in-the-right-shape template (ci-layering, 2026-07-06). New projects used to
+# spawn one workflow per gate (lint.yml / typecheck.yml / test.yml …), each with
+# its own `checkout + setup` — a hosted-runner-era pattern that serializes into a
+# long fan-out under a single self-hosted runner (ai-console: 6 workflows → 10.7min
+# push wall-clock for ~4.2min of compute). Instead, add gates as JOBS in this one
+# file. See docs/ci-layering-plan.md (my-trellis) and the atlas engineering-gates
+# "CI 分层出生规范" for the full rationale.
+#
+# Rules of the shape:
+#   • One workflow, one job per gate. The job `name:` IS the required status-check
+#     context on branch protection — keep names stable once you wire them in.
+#   • Share setup through a composite action (./.github/actions/setup-pnpm ships
+#     alongside this file) so every job stays in lockstep — never copy-paste the
+#     corepack+install steps into each job.
+#   • Three tiers (see docs/ci-layering-plan.md):
+#       T1 PR-blocking (required)     — lint / typecheck / fast test / PR desc; ≤5min real run.
+#       T2 post-merge (push main)     — heavy integration (DB, schema, release build); red = fix first.
+#       T3 nightly / evidence (cron)  — the heaviest evidence suites.
+#   • runs-on: start on `ubuntu-latest` (hosted). When you connect a self-hosted
+#     runner, flip to `[self-hosted, Linux, X64]` (or a `fast`/`heavy` lane label)
+#     and follow the runner-onboarding SOP in network-homelab/actions-runners.md
+#     (composite deps, pnpm store on the same filesystem, GOPROXY, container mounts).
+
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# One group per ref: each PR and each main push gets its own group, so PRs never
+# cancel each other and a new push to a ref supersedes the in-flight run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Tier 1: PR-blocking gates (required) ──────────────────────────────────
+  # These block merge. Add each to branch protection required contexts by its
+  # `name:` as you wire it up (see the my-trellis README bootstrap section).
+
+  # Live from birth + stack-agnostic: enforces the bilingual PR template against
+  # the actual PR body (the scaffold ships scripts/check_pr_description.py). This
+  # is the LIVE gate on the PR itself — trellis-platform.yml only unit-tests the
+  # checker. Promote "PR Description" into branch protection when you want it to
+  # block merge; until then it runs advisory.
+  pr-description:
+    name: PR Description
+    # Only meaningful on pull_request; a skipped required check still satisfies
+    # branch protection on push-to-main.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest # self-hosted? see network-homelab/actions-runners.md
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate PR title and body
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          printf '%s' "$PR_BODY" > /tmp/pr-body.md
+          python3 scripts/check_pr_description.py --title "$PR_TITLE" --body-file /tmp/pr-body.md
+
+  # Example product gates — uncomment and adapt to your stack. They share the
+  # setup-pnpm composite (edit it, or swap in setup-go / setup-python, for a
+  # non-pnpm stack). Each job's `name:` becomes a required status-check context.
+  #
+  # lint:
+  #   name: Lint
+  #   runs-on: ubuntu-latest # self-hosted? see network-homelab/actions-runners.md
+  #   timeout-minutes: 5
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: ./.github/actions/setup-pnpm # unified setup — never inline corepack+install
+  #     - run: pnpm check
+  #
+  # typecheck:
+  #   name: Type Check
+  #   runs-on: ubuntu-latest
+  #   timeout-minutes: 8
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: ./.github/actions/setup-pnpm
+  #     - run: pnpm typecheck
+  #
+  # test-fast:
+  #   name: Fast Test Suite
+  #   runs-on: ubuntu-latest
+  #   timeout-minutes: 10
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: ./.github/actions/setup-pnpm
+  #     - run: pnpm test
+
+  # ── Tier 2: post-merge (push to main), NOT required ───────────────────────
+  # Heavy integration that would slow the PR feedback loop (DB e2e, schema drift,
+  # release build). Runs only after merge; red on main = highest-priority fix
+  # (make sure a notification surface catches it — gh run watch / wait-ci).
+  #
+  # db-integration:
+  #   name: DB Integration
+  #   if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+  #   runs-on: ubuntu-latest # self-hosted heavy lane? runs-on: [self-hosted, heavy]
+  #   timeout-minutes: 20
+  #   services:
+  #     postgres:
+  #       image: postgres:16
+  #       # ...
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: ./.github/actions/setup-pnpm
+  #     - run: pnpm test:integration
+
+  # ── Tier 3: nightly / evidence (schedule or manual) ───────────────────────
+  # The heaviest evidence suites — never on the PR critical path. Add a
+  # `schedule:` trigger to `on:` above (e.g. cron '0 18 * * *') to enable, or
+  # dispatch on demand.
+  #
+  # nightly-evidence:
+  #   name: Nightly Evidence
+  #   if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+  #   runs-on: ubuntu-latest # self-hosted heavy lane recommended
+  #   timeout-minutes: 30
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: ./.github/actions/setup-pnpm
+  #     - run: pnpm evidence:nightly

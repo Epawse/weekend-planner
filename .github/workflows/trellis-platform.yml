@@ -1,0 +1,42 @@
+# Trellis platform gate: the scaffold's own python suites (planning gate + WIP
+# rail, hooks, ship helper, task metadata, branch report). Product CI joins as
+# separate workflows once the stack lands.
+#
+# Intended as the repo's REQUIRED status check from day one (pair with branch
+# protection: required check "Trellis Platform" + strict + enforce_admins —
+# see the my-trellis README bootstrap section). Deliberately NOT path-filtered:
+# a required check skipped by a workflow-level `paths:` filter stays "pending"
+# and blocks every merge. Once product CI exists and becomes the required
+# check, this workflow can adopt paths filters (see the WDT profiles for that
+# layered variant).
+
+name: Trellis Platform
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: trellis-platform-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  trellis-platform:
+    name: Trellis Platform
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: |
+          python3 -m unittest \
+            scripts.tests.test_trellis_planning_gate \
+            scripts.tests.test_claude_hooks \
+            scripts.tests.test_trellis_ship \
+            scripts.tests.test_task_create_metadata \
+            scripts.tests.test_trellis_branch_report \
+            scripts.tests.test_base_hooks \
+            scripts.tests.test_git_sop_hooks
